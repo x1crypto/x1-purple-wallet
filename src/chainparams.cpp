@@ -157,7 +157,7 @@ public:
 
         bech32_hrp = "xds";
 
-        vFixedSeeds = std::vector<SeedSpec6>(pnSeed6_main, pnSeed6_main + ARRAYLEN(pnSeed6_main));
+        vFixedSeeds = std::vector<SeedSpec6>();
 
         fDefaultConsistencyChecks = false;
         fRequireStandard = true;
