@@ -135,11 +135,15 @@ public:
         m_assumed_chain_state_size = 4;
 
         genesis = CreateXDSGenesisBlock(1578009360, 15118976, 0x1e0fffff, 1);
-        consensus.hashGenesisBlock = genesis.GetHash();
-
         assert(genesis.hashMerkleRoot == uint256S("0xe3c549956232f0878414d765e83c3f9b1b084b0fa35643ddee62857220ea02b0"));
+
+        const auto powHashGenesisBlock = genesis.GetPoWHash(); // this is the XDS SHA512t PoW hash
+        assert(powHashGenesisBlock == uint256S("0x0000000e13c5bf36c155c7cb1681053d607c191fc44b863d0c5aef6d27b8eb8f"));
+
+        consensus.hashGenesisBlock = genesis.GetHash(); // only in case of the genesis block, GetHash() also returns the PoW hash
         assert(consensus.hashGenesisBlock == uint256S("0x0000000e13c5bf36c155c7cb1681053d607c191fc44b863d0c5aef6d27b8eb8f"));
 
+        //LogPrint(BCLog::NET, "%s", consensus.hashGenesisBlock.ToString());
 
         // Note that of those which support the service bits prefix, most only support a subset of
         // possible options.
@@ -164,8 +168,12 @@ public:
         m_is_test_chain = false;
         m_is_mockable_chain = false;
 
+        //checkpointData = {
+        //    {{0, uint256S("0x0000000e13c5bf36c155c7cb1681053d607c191fc44b863d0c5aef6d27b8eb8f")}}}; // genesis block
+        //
+        //
         checkpointData = {
-            {{0, uint256S("0x0000000e13c5bf36c155c7cb1681053d607c191fc44b863d0c5aef6d27b8eb8f")}}}; // genesis block
+            {{0, consensus.hashGenesisBlock}}}; // genesis block
 
         chainTxData = ChainTxData{
             // Sample Data from RPC: getchaintxstats 4096 0000000000000000000f2adce67e49b0b6bdeb9de8b7c3d7e93b21e7fc1e819d

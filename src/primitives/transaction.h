@@ -323,7 +323,16 @@ public:
 
     bool IsCoinBase() const
     {
-        return (vin.size() == 1 && vin[0].prevout.IsNull());
+        return (vin.size() == 1 && vin[0].prevout.IsNull() && vout.size() >= 1);
+    }
+
+	bool IsCoinStake() const
+    {
+        return (vin.size() > 0 
+            && !vin[0].prevout.IsNull() 
+            && vout.size() >= 2
+            && vout[0].nValue == 0
+            && vout[0].scriptPubKey.size() == 0);
     }
 
     friend bool operator==(const CTransaction& a, const CTransaction& b)
