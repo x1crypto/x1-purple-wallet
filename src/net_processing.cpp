@@ -786,7 +786,7 @@ void PeerManager::AddTxAnnouncement(const CNode& node, const GenTxid& gtxid, std
     if (!preferred) delay += NONPREF_PEER_TX_DELAY;
     if (!gtxid.IsWtxid() && g_wtxid_relay_peers > 0) delay += TXID_RELAY_DELAY;
     const bool overloaded = !node.HasPermission(PF_RELAY) &&
-        m_txrequest.CountInFlight(nodeid) >= MAX_PEER_TX_REQUEST_IN_FLIGHT;
+                            m_txrequest.CountInFlight(nodeid) >= MAX_PEER_TX_REQUEST_IN_FLIGHT;
     if (overloaded) delay += OVERLOADED_PEER_TX_DELAY;
     m_txrequest.ReceivedInv(nodeid, gtxid, preferred, current_time + delay);
 }
@@ -1721,7 +1721,7 @@ void static ProcessGetData(CNode& pfrom, Peer& peer, const CChainParams& chainpa
     // Only process one BLOCK item per call, since they're uncommon and can be
     // expensive to process.
     if (it != peer.m_getdata_requests.end() && !pfrom.fPauseSend) {
-        const CInv &inv = *it++;
+        const CInv& inv = *it++;
         if (inv.IsGenBlkMsg()) {
             ProcessGetBlockData(pfrom, chainparams, inv, connman);
         }
@@ -1823,7 +1823,6 @@ void PeerManager::ProcessHeadersMessage(CNode& pfrom, const std::vector<CBlockHe
         uint256 hashLastBlock;
 
         for (const CBlockHeader& header : headers) {
-
             if (!hashLastBlock.IsNull() && header.hashPrevBlock != hashLastBlock) {
                 Misbehaving(pfrom.GetId(), 20, "non-continuous headers sequence");
                 LogPrint(BCLog::NET, "Invalid in batch, index %d, header.nTime %d ...\n", index, header.nTime); // dbg
@@ -2828,6 +2827,73 @@ void PeerManager::ProcessMessage(CNode& pfrom, const std::string& msg_type, CDat
         CBlockLocator locator;
         uint256 hashStop;
         vRecv >> locator >> hashStop;
+        
+        if (locator.vHave.size() > MAX_LOCATOR_SZ) {
+            LogPrint(BCLog::NET, "getheaders locator size %lld > %d, disconnect peer=%d\n", locator.vHave.size(), MAX_LOCATOR_SZ, pfrom.GetId());
+            pfrom.fDisconnect = true;
+            return;
+        }
+
+        LOCK(cs_main);
+        if (::ChainstateActive().IsInitialBlockDownload() && !pfrom.HasPermission(PF_DOWNLOAD)) {
+            LogPrint(BCLog::NET, "Ignoring getheaders from peer=%d because node is in initial block download\n", pfrom.GetId());
+            return;
+        }
+
+        CNodeState* nodestate = State(pfrom.GetId());
+        const CBlockIndex* pindex = nullptr;
+        if (locator.IsNull()) {
+            // If locator is null, return the hashStop block
+            pindex = LookupBlockIndex(hashStop);
+            if (!pindex) {
+                return;
+            }
+
+            if (!BlockRequestAllowed(pindex, m_chainparams.GetConsensus())) {
+                LogPrint(BCLog::NET, "%s: ignoring request from peer=%i for old block header that isn't in the main chain\n", __func__, pfrom.GetId());
+                return;
+            }
+        } else {
+            // Find the last block the caller has in the main chain
+            pindex = FindForkInGlobalIndex(::ChainActive(), locator);
+            if (pindex)
+                pindex = ::ChainActive().Next(pindex);
+        }
+
+        // we must use CBlocks, as CBlockHeaders won't include the 0x00 nTx count at the end
+        std::vector<CBlock> vHeaders;
+        int nLimit = MAX_HEADERS_RESULTS;
+        LogPrint(BCLog::NET, "getheaders %d to %s from peer=%d\n", (pindex ? pindex->nHeight : -1), hashStop.IsNull() ? "end" : hashStop.ToString(), pfrom.GetId());
+        for (; pindex; pindex = ::ChainActive().Next(pindex)) {
+            vHeaders.push_back(pindex->GetBlockHeader());
+            if (--nLimit <= 0 || pindex->GetBlockHash() == hashStop)
+                break;
+        }
+        // pindex can be nullptr either if we sent ::ChainActive().Tip() OR
+        // if our peer has ::ChainActive().Tip() (and thus we are sending an empty
+        // headers message). In both cases it's safe to update
+        // pindexBestHeaderSent to be our tip.
+        //
+        // It is important that we simply reset the BestHeaderSent value here,
+        // and not max(BestHeaderSent, newHeaderSent). We might have announced
+        // the currently-being-connected tip using a compact block, which
+        // resulted in the peer sending a headers request, which we respond to
+        // without the new block. By resetting the BestHeaderSent, we ensure we
+        // will re-announce the new block via headers (or compact blocks again)
+        // in the SendMessages logic.
+        nodestate->pindexBestHeaderSent = pindex ? pindex : ::ChainActive().Tip();
+        m_connman.PushMessage(&pfrom, msgMaker.Make(NetMsgType::HEADERS, vHeaders));
+        return;
+    }
+
+    if (msg_type == NetMsgType::GETPROVHDR) {
+        LogPrint(BCLog::NET, "Processing GETPROVHDR from peer %d\n", pfrom.GetId());
+        // todo:
+        // - verify the deserialisation is correct
+        // - respond with a proven headers payload not headers payload
+        CBlockLocator locator;
+        uint256 hashStop;
+        vRecv >> locator >> hashStop;
 
         if (locator.vHave.size() > MAX_LOCATOR_SZ) {
             LogPrint(BCLog::NET, "getheaders locator size %lld > %d, disconnect peer=%d\n", locator.vHave.size(), MAX_LOCATOR_SZ, pfrom.GetId());
@@ -2883,6 +2949,7 @@ void PeerManager::ProcessMessage(CNode& pfrom, const std::string& msg_type, CDat
         // will re-announce the new block via headers (or compact blocks again)
         // in the SendMessages logic.
         nodestate->pindexBestHeaderSent = pindex ? pindex : ::ChainActive().Tip();
+        LogPrint(BCLog::NET, "XWARN: Responding to GETPROVHDR with HEADERS\n");
         m_connman.PushMessage(&pfrom, msgMaker.Make(NetMsgType::HEADERS, vHeaders));
         return;
     }
@@ -2968,9 +3035,7 @@ void PeerManager::ProcessMessage(CNode& pfrom, const std::string& msg_type, CDat
 
             // Recursively process any orphan transactions that depended on this one
             ProcessOrphanTx(peer->m_orphan_work_set);
-        }
-        else if (state.GetResult() == TxValidationResult::TX_MISSING_INPUTS)
-        {
+        } else if (state.GetResult() == TxValidationResult::TX_MISSING_INPUTS) {
             bool fRejectedParents = false; // It may be the case that the orphans parents have all been rejected
 
             // Deduplicate parent txids, so that we don't have to loop over
@@ -3423,6 +3488,44 @@ void PeerManager::ProcessMessage(CNode& pfrom, const std::string& msg_type, CDat
         for (unsigned int n = 0; n < nCount; n++) {
             vRecv >> headers[n];
             ReadCompactSize(vRecv); // ignore tx count; assume it is 0.
+            ReadCompactSize(vRecv); // ignore extra byte
+        }
+
+        return ProcessHeadersMessage(pfrom, headers, /*via_compact_block=*/false);
+    }
+
+    if (msg_type == NetMsgType::PROVHDR) {
+        // Ignore headers received while importing
+        if (fImporting || fReindex) {
+            LogPrint(BCLog::NET, "Unexpected proven headers message received from peer %d\n", pfrom.GetId());
+            return;
+        }
+
+        std::vector<CBlockHeader> headers;
+        std::vector<CProvenBlockHeader> proven_headers;
+
+        // Bypass the normal CBlock deserialization, as we don't want to risk deserializing 2000 full blocks.
+        unsigned int nCount = ReadCompactSize(vRecv);
+        LogPrint(BCLog::NET, "Processing %d PROVHDRs from peer %d\n", nCount, pfrom.GetId());
+
+        if (nCount > MAX_HEADERS_RESULTS) {
+            Misbehaving(pfrom.GetId(), 20, strprintf("headers message size = %u", nCount));
+            return;
+        }
+        headers.resize(nCount);
+        proven_headers.resize(nCount);
+        for (unsigned int n = 0; n < nCount; n++) {
+            vRecv >> proven_headers[n];
+            CTransaction tx(deserialize, vRecv);
+            if (tx.IsCoinBase()) {
+                LogPrint(BCLog::NET, "Received a PoW proven block header (%d transactions)", proven_headers[n].nTransactions);
+            } else if (tx.IsCoinStake()) {
+                LogPrint(BCLog::NET, "Received a PoS proven block header (%d transactions)", proven_headers[n].nTransactions);
+            } else {
+                LogPrint(BCLog::NET, "Received an invalid proven block header");
+            }
+            proven_headers[n].txCoinstake = MakeTransactionRef(tx);
+            headers[n] = proven_headers[n];
         }
 
         return ProcessHeadersMessage(pfrom, headers, /*via_compact_block=*/false);
@@ -3689,7 +3792,7 @@ void PeerManager::ProcessMessage(CNode& pfrom, const std::string& msg_type, CDat
         vRecv >> vInv;
         if (vInv.size() <= MAX_PEER_TX_ANNOUNCEMENTS + MAX_BLOCKS_IN_TRANSIT_PER_PEER) {
             LOCK(::cs_main);
-            for (CInv &inv : vInv) {
+            for (CInv& inv : vInv) {
                 if (inv.IsGenTxMsg()) {
                     // If we receive a NOTFOUND message for a tx we requested, mark the announcement for it as
                     // completed in TxRequestTracker.
@@ -4486,12 +4589,12 @@ bool PeerManager::SendMessages(CNode* pto)
         auto requestable = m_txrequest.GetRequestable(pto->GetId(), current_time, &expired);
         for (const auto& entry : expired) {
             LogPrint(BCLog::NET, "timeout of inflight %s %s from peer=%d\n", entry.second.IsWtxid() ? "wtx" : "tx",
-                entry.second.GetHash().ToString(), entry.first);
+                     entry.second.GetHash().ToString(), entry.first);
         }
         for (const GenTxid& gtxid : requestable) {
             if (!AlreadyHaveTx(gtxid, m_mempool)) {
                 LogPrint(BCLog::NET, "Requesting %s %s peer=%d\n", gtxid.IsWtxid() ? "wtx" : "tx",
-                    gtxid.GetHash().ToString(), pto->GetId());
+                         gtxid.GetHash().ToString(), pto->GetId());
                 vGetData.emplace_back(gtxid.IsWtxid() ? MSG_WTX : (MSG_TX | GetFetchFlags(*pto)), gtxid.GetHash());
                 if (vGetData.size() >= MAX_GETDATA_SZ) {
                     m_connman.PushMessage(pto, msgMaker.Make(NetMsgType::GETDATA, vGetData));

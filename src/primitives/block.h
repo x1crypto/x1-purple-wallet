@@ -60,6 +60,55 @@ public:
     }
 };
 
+class CProvenBlockHeader : public CBlockHeader
+{
+public:
+    /** the total number of transactions in the block */
+    unsigned int nTransactions;
+
+    /** txids and internal hashes */
+    std::vector<uint256> vHash;
+
+    /** node-is-parent-of-matched-txid bits */
+    std::vector<bool> vBits;
+
+    /** header signature w/ coinstake key */
+    std::vector<unsigned char> vSignature;
+
+    /** coinstake transaction */
+    mutable CTransactionRef txCoinstake;
+	
+    CProvenBlockHeader()
+    {
+        SetNull();
+    }
+
+    CProvenBlockHeader(const CBlockHeader& header)
+    {
+        SetNull();
+        *(static_cast<CBlockHeader*>(this)) = header;
+    }
+
+    SERIALIZE_METHODS(CProvenBlockHeader, obj)
+    {
+        // header
+        READWRITEAS(CBlockHeader, obj);
+        // merkle proof
+        READWRITE(obj.nTransactions, obj.vHash);
+        std::vector<unsigned char> bytes;
+        SER_WRITE(obj, bytes = BitsToBytes(obj.vBits));
+        READWRITE(bytes);
+        SER_READ(obj, obj.vBits = BytesToBits(bytes));
+        // signature
+        READWRITE(obj.vSignature);
+    	// transaction - separate serialization
+    }
+
+    void SetNull()
+    {
+        CBlockHeader::SetNull();
+    }
+};
 
 class CBlock : public CBlockHeader
 {

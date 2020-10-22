@@ -1136,9 +1136,9 @@ bool ReadBlockFromDisk(CBlock& block, const FlatFilePos& pos, const Consensus::P
         return error("%s: Deserialize or I/O error - %s at %s", __func__, e.what(), pos.ToString());
     }
 
-    // Check the header
-    if (!CheckProofOfWork(block.GetPoWHash(), block.nBits, consensusParams))
-        return error("ReadBlockFromDisk: Errors in block header at %s", pos.ToString());
+    // Check the header - todo
+    /*if (!CheckProofOfWork(block.GetPoWHash(), block.nBits, consensusParams))
+        return error("ReadBlockFromDisk: Errors in block header at %s", pos.ToString());*/
 
     // Signet only: check block solution
     if (consensusParams.signet_blocks && !CheckSignetBlockSolution(block, consensusParams)) {
@@ -3637,12 +3637,6 @@ bool BlockManager::AcceptBlockHeader(const CBlockHeader& block, BlockValidationS
         // Get prev block index
         CBlockIndex* pindexPrev = nullptr;
 
-       /* BlockMap::iterator mi;
-        if (block.hashPrevBlock == uint256S("0x0000000e13c5bf36c155c7cb1681053d607c191fc44b863d0c5aef6d27b8eb8f")) {
-            mi = m_block_index.find(uint256S("0x936b87c0ddd7ca58483105bb5ac43e0dc0b4d8f5c12121caea417bdc8b89a4ac"));
-        } else {
-            mi = m_block_index.find(block.hashPrevBlock);
-        }*/
         BlockMap::iterator mi = m_block_index.find(block.hashPrevBlock);
         if (mi == m_block_index.end()) {
             LogPrintf("ERROR: %s: prev block not found\n", __func__);
