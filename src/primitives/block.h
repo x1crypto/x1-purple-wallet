@@ -60,6 +60,42 @@ public:
     }
 };
 
+class CHeadersMessage : public CBlockHeader
+{
+public:
+    /** the total number of transactions in the block */
+    unsigned char nTransactions;
+    
+    /** dummy byte for blockcore compat */
+    unsigned char nDummy;
+
+    CHeadersMessage()
+    {
+        SetNull();
+    }
+
+    CHeadersMessage(const CBlockHeader& header)
+    {
+        SetNull();
+        *(static_cast<CBlockHeader*>(this)) = header;
+    }
+
+    SERIALIZE_METHODS(CHeadersMessage, obj)
+    {
+        // header
+        READWRITEAS(CBlockHeader, obj);
+        // zero values for nTransactions, nDummy for the headers message
+        READWRITE(obj.nTransactions, obj.nDummy);
+    }
+
+    void SetNull()
+    {
+        CBlockHeader::SetNull();
+        nTransactions = 0;
+        nDummy = 0;
+    }
+};
+
 class CProvenBlockHeader : public CBlockHeader
 {
 public:
@@ -77,7 +113,7 @@ public:
 
     /** coinstake transaction */
     mutable CTransactionRef txCoinstake;
-	
+
     CProvenBlockHeader()
     {
         SetNull();
@@ -101,7 +137,7 @@ public:
         SER_READ(obj, obj.vBits = BytesToBits(bytes));
         // signature
         READWRITE(obj.vSignature);
-    	// transaction - separate serialization
+        // transaction - separate serialization
     }
 
     void SetNull()

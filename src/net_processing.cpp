@@ -2891,10 +2891,12 @@ void PeerManager::ProcessMessage(CNode& pfrom, const std::string& msg_type, CDat
         // todo:
         // - verify the deserialisation is correct
         // - respond with a proven headers payload not headers payload
-        CBlockLocator locator;
         uint256 hashStop;
-        vRecv >> locator >> hashStop;
+        std::vector<uint256> vHashes;
 
+        vRecv >> vHashes >> hashStop;
+        
+        CBlockLocator locator = CBlockLocator(vHashes);
         if (locator.vHave.size() > MAX_LOCATOR_SZ) {
             LogPrint(BCLog::NET, "getheaders locator size %lld > %d, disconnect peer=%d\n", locator.vHave.size(), MAX_LOCATOR_SZ, pfrom.GetId());
             pfrom.fDisconnect = true;
@@ -2928,7 +2930,8 @@ void PeerManager::ProcessMessage(CNode& pfrom, const std::string& msg_type, CDat
         }
 
         // we must use CBlocks, as CBlockHeaders won't include the 0x00 nTx count at the end
-        std::vector<CBlock> vHeaders;
+        //std::vector<CBlock> vHeaders;
+        std::vector<CHeadersMessage> vHeaders;
         int nLimit = MAX_HEADERS_RESULTS;
         LogPrint(BCLog::NET, "getheaders %d to %s from peer=%d\n", (pindex ? pindex->nHeight : -1), hashStop.IsNull() ? "end" : hashStop.ToString(), pfrom.GetId());
         for (; pindex; pindex = ::ChainActive().Next(pindex)) {
