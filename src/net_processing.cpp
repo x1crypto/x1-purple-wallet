@@ -1801,7 +1801,7 @@ void PeerManager::ProcessHeadersMessage(CNode& pfrom, const std::vector<CBlockHe
         //   nUnconnectingHeaders gets reset back to 0.
         if (!LookupBlockIndex(headers[0].hashPrevBlock) && nCount < MAX_BLOCKS_TO_ANNOUNCE) {
             nodestate->nUnconnectingHeaders++;
-            m_connman.PushMessage(&pfrom, msgMaker.Make(NetMsgType::GETHEADERS, ::ChainActive().GetLocator(pindexBestHeader), uint256()));
+            m_connman.PushMessage(&pfrom, msgMaker.Make(NetMsgType::GETPROVHDR, ::ChainActive().GetLocator(pindexBestHeader).vHave, uint256()));
             LogPrint(BCLog::NET, "received header %s: missing prev block %s, sending getheaders (%d) to end (peer=%d, nUnconnectingHeaders=%d)\n",
                      headers[0].GetHash().ToString(),
                      headers[0].hashPrevBlock.ToString(),
@@ -1874,7 +1874,7 @@ void PeerManager::ProcessHeadersMessage(CNode& pfrom, const std::vector<CBlockHe
             // TODO: optimize: if pindexLast is an ancestor of ::ChainActive().Tip or pindexBestHeader, continue
             // from there instead.
             LogPrint(BCLog::NET, "more getheaders (%d) to end to peer=%d (startheight:%d)\n", pindexLast->nHeight, pfrom.GetId(), pfrom.nStartingHeight);
-            m_connman.PushMessage(&pfrom, msgMaker.Make(NetMsgType::GETHEADERS, ::ChainActive().GetLocator(pindexLast), uint256()));
+            m_connman.PushMessage(&pfrom, msgMaker.Make(NetMsgType::GETPROVHDR, ::ChainActive().GetLocator(pindexLast).vHave, uint256()));
         }
 
         bool fCanDirectFetch = CanDirectFetch(m_chainparams.GetConsensus());
@@ -2678,7 +2678,7 @@ void PeerManager::ProcessMessage(CNode& pfrom, const std::string& msg_type, CDat
         }
 
         if (best_block != nullptr) {
-            m_connman.PushMessage(&pfrom, msgMaker.Make(NetMsgType::GETHEADERS, ::ChainActive().GetLocator(pindexBestHeader), *best_block));
+            m_connman.PushMessage(&pfrom, msgMaker.Make(NetMsgType::GETPROVHDR, ::ChainActive().GetLocator(pindexBestHeader).vHave, *best_block));
             LogPrint(BCLog::NET, "getheaders (%d) %s to peer=%d\n", pindexBestHeader->nHeight, best_block->ToString(), pfrom.GetId());
         }
 
@@ -3191,7 +3191,7 @@ void PeerManager::ProcessMessage(CNode& pfrom, const std::string& msg_type, CDat
             if (!LookupBlockIndex(cmpctblock.header.hashPrevBlock)) {
                 // Doesn't connect (or is genesis), instead of DoSing in AcceptBlockHeader, request deeper headers
                 if (!::ChainstateActive().IsInitialBlockDownload())
-                    m_connman.PushMessage(&pfrom, msgMaker.Make(NetMsgType::GETHEADERS, ::ChainActive().GetLocator(pindexBestHeader), uint256()));
+                    m_connman.PushMessage(&pfrom, msgMaker.Make(NetMsgType::GETPROVHDR, ::ChainActive().GetLocator(pindexBestHeader).vHave, uint256()));
                 return;
             }
 
@@ -3476,6 +3476,10 @@ void PeerManager::ProcessMessage(CNode& pfrom, const std::string& msg_type, CDat
     }
 
     if (msg_type == NetMsgType::HEADERS) {
+        // new: Ignore all headers messages
+        LogPrint(BCLog::NET, "Unexpected headers message received from peer %d\n", pfrom.GetId());
+        return;
+
         // Ignore headers received while importing
         if (fImporting || fReindex) {
             LogPrint(BCLog::NET, "Unexpected headers message received from peer %d\n", pfrom.GetId());
@@ -3970,7 +3974,7 @@ void PeerManager::ConsiderEviction(CNode& pto, int64_t time_in_seconds)
             } else {
                 assert(state.m_chain_sync.m_work_header);
                 LogPrint(BCLog::NET, "sending getheaders to outbound peer=%d to verify chain work (current best known block:%s, benchmark blockhash: %s)\n", pto.GetId(), state.pindexBestKnownBlock != nullptr ? state.pindexBestKnownBlock->GetBlockHash().ToString() : "<none>", state.m_chain_sync.m_work_header->GetBlockHash().ToString());
-                m_connman.PushMessage(&pto, msgMaker.Make(NetMsgType::GETHEADERS, ::ChainActive().GetLocator(state.m_chain_sync.m_work_header->pprev), uint256()));
+                m_connman.PushMessage(&pto, msgMaker.Make(NetMsgType::GETPROVHDR, ::ChainActive().GetLocator(state.m_chain_sync.m_work_header->pprev).vHave, uint256()));
                 state.m_chain_sync.m_sent_getheaders = true;
                 constexpr int64_t HEADERS_RESPONSE_TIME = 120; // 2 minutes
                 // Bump the timeout to allow a response, which could clear the timeout
@@ -4202,7 +4206,11 @@ bool PeerManager::SendMessages(CNode* pto)
                 if (pindexStart->pprev)
                     pindexStart = pindexStart->pprev;
                 LogPrint(BCLog::NET, "initial getheaders (%d) to peer=%d (startheight:%d)\n", pindexStart->nHeight, pto->GetId(), pto->nStartingHeight);
-                m_connman.PushMessage(pto, msgMaker.Make(NetMsgType::GETHEADERS, ::ChainActive().GetLocator(pindexStart), uint256()));
+               /* CBlockLocator locator = ::ChainActive().GetLocator(pindexStart);
+                CGetProvenHeaders message = CGetProvenHeaders(locator.vHave, uint256());
+                m_connman.PushMessage(pto, msgMaker.Make(NetMsgType::GETPROVHDR, message));*/
+                m_connman.PushMessage(pto, msgMaker.Make(NetMsgType::GETPROVHDR, ::ChainActive().GetLocator(pindexStart).vHave, uint256()));
+                //m_connman.PushMessage(pto, msgMaker.Make(NetMsgType::GETHEADERS, ::ChainActive().GetLocator(pindexStart), uint256()));
             }
         }
 
