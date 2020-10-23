@@ -65,7 +65,7 @@ class CHeadersMessage : public CBlockHeader
 public:
     /** the total number of transactions in the block */
     unsigned char nTransactions;
-    
+
     /** dummy byte for blockcore compat */
     unsigned char nDummy;
 
@@ -137,12 +137,15 @@ public:
         SER_READ(obj, obj.vBits = BytesToBits(bytes));
         // signature
         READWRITE(obj.vSignature);
-        // transaction - separate serialization
+        // transaction (serialization only, deserialization must be done separately)
+        SER_WRITE(obj, obj.txCoinstake->Serialize(s));
+       
     }
 
     void SetNull()
     {
         CBlockHeader::SetNull();
+        txCoinstake = MakeTransactionRef(CTransaction());
     }
 };
 
@@ -151,6 +154,9 @@ class CBlock : public CBlockHeader
 public:
     // network and disk
     std::vector<CTransactionRef> vtx;
+
+    /** signature of proof-of-stake blocks */
+    std::vector<unsigned char> vPoSBlkSig;
 
     // memory only
     mutable bool fChecked;
@@ -170,12 +176,14 @@ public:
     {
         READWRITEAS(CBlockHeader, obj);
         READWRITE(obj.vtx);
+        READWRITE(obj.vPoSBlkSig);
     }
 
     void SetNull()
     {
         CBlockHeader::SetNull();
         vtx.clear();
+        vPoSBlkSig.clear();
         fChecked = false;
     }
 
