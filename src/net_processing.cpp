@@ -2931,10 +2931,14 @@ void PeerManager::ProcessMessage(CNode& pfrom, const std::string& msg_type, CDat
 
         // we must use CBlocks, as CBlockHeaders won't include the 0x00 nTx count at the end
         //std::vector<CBlock> vHeaders;
-        std::vector<CHeadersMessage> vHeaders;
+        //std::vector<CHeadersMessage> vHeaders;
+        std::vector<CProvenBlockHeader> vHeaders;
         int nLimit = MAX_HEADERS_RESULTS;
         LogPrint(BCLog::NET, "getheaders %d to %s from peer=%d\n", (pindex ? pindex->nHeight : -1), hashStop.IsNull() ? "end" : hashStop.ToString(), pfrom.GetId());
         for (; pindex; pindex = ::ChainActive().Next(pindex)) {
+
+           /* CProvenBlockHeader provenHeader = pindex->GetBlockHeader();
+            CBlock block = pindex->GetBlockHeader();*/
             vHeaders.push_back(pindex->GetBlockHeader());
             if (--nLimit <= 0 || pindex->GetBlockHash() == hashStop)
                 break;
@@ -2952,8 +2956,7 @@ void PeerManager::ProcessMessage(CNode& pfrom, const std::string& msg_type, CDat
         // will re-announce the new block via headers (or compact blocks again)
         // in the SendMessages logic.
         nodestate->pindexBestHeaderSent = pindex ? pindex : ::ChainActive().Tip();
-        LogPrint(BCLog::NET, "XWARN: Responding to GETPROVHDR with HEADERS\n");
-        m_connman.PushMessage(&pfrom, msgMaker.Make(NetMsgType::HEADERS, vHeaders));
+        m_connman.PushMessage(&pfrom, msgMaker.Make(NetMsgType::PROVHDR, vHeaders));
         return;
     }
 
@@ -3543,7 +3546,7 @@ void PeerManager::ProcessMessage(CNode& pfrom, const std::string& msg_type, CDat
 
         std::shared_ptr<CBlock> pblock = std::make_shared<CBlock>();
         vRecv >> *pblock;
-
+        
         LogPrint(BCLog::NET, "received block %s peer=%d\n", pblock->GetHash().ToString(), pfrom.GetId());
 
         bool forceProcessing = false;
