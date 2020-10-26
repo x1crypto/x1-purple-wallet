@@ -1519,7 +1519,6 @@ bool CheckInputScripts(const CTransaction& tx, TxValidationState& state, const C
     assert(txdata.m_spent_outputs.size() == tx.vin.size());
 
     for (unsigned int i = 0; i < tx.vin.size(); i++) {
-
         // We very carefully only pass in things to CScriptCheck which
         // are clearly committed to by tx' witness hash. This provides
         // a sanity check that our caching is not introducing consensus
@@ -1542,7 +1541,7 @@ bool CheckInputScripts(const CTransaction& tx, TxValidationState& state, const C
                 // non-upgraded nodes by banning CONSENSUS-failing
                 // data providers.
                 CScriptCheck check2(txdata.m_spent_outputs[i], tx, i,
-                        flags & ~STANDARD_NOT_MANDATORY_VERIFY_FLAGS, cacheSigStore, &txdata);
+                                    flags & ~STANDARD_NOT_MANDATORY_VERIFY_FLAGS, cacheSigStore, &txdata);
                 if (check2())
                     return state.Invalid(TxValidationResult::TX_NOT_STANDARD, strprintf("non-mandatory-script-verify-flag (%s)", ScriptErrorString(check.GetScriptError())));
             }
@@ -3170,7 +3169,7 @@ void ResetBlockFailureFlags(CBlockIndex* pindex)
     return ::ChainstateActive().ResetBlockFailureFlags(pindex);
 }
 
-CBlockIndex* BlockManager::AddToBlockIndex(const CBlockHeader& block)
+CBlockIndex* BlockManager::AddToBlockIndex(const CBlockHeader& block, const uint32_t nPosPow)
 {
     AssertLockHeld(cs_main);
 
@@ -3182,6 +3181,8 @@ CBlockIndex* BlockManager::AddToBlockIndex(const CBlockHeader& block)
 
     // Construct new block index object
     CBlockIndex* pindexNew = new CBlockIndex(block);
+
+    pindexNew->nPowPos = nPosPow;
     // We assign the sequence id to blocks only when the full data is available,
     // to avoid miners withholding blocks but broadcasting headers, to get a
     // competitive advantage.
@@ -3328,12 +3329,18 @@ static bool FindUndoPos(BlockValidationState& state, int nFile, FlatFilePos& pos
     return true;
 }
 
+static bool IsPoSBlock(const CBlock& block)
+{
+    if (block.vtx.size() > 1 && block.vtx[1]->IsCoinStake())
+        return true;
+    return false;
+}
+
 static bool CheckBlockHeader(const CBlockHeader& block, BlockValidationState& state, const Consensus::Params& consensusParams, bool fCheckPOW = true)
 {
     // Check proof of work matches claimed amount
     if (fCheckPOW && !CheckProofOfWork(block.GetPoWHash(), block.nBits, consensusParams))
-        LogPrintf("XWARN: CheckBlockHeader() nTime %d high-hash : proof of work failed\n", block.nTime);
-        //return state.Invalid(BlockValidationResult::BLOCK_INVALID_HEADER, "high-hash", "proof of work failed");
+        return state.Invalid(BlockValidationResult::BLOCK_INVALID_HEADER, "high-hash", "proof of work failed");
 
     return true;
 }
@@ -3347,8 +3354,13 @@ bool CheckBlock(const CBlock& block, BlockValidationState& state, const Consensu
 
     // Check that the header is valid (particularly PoW).  This is mostly
     // redundant with the call in AcceptBlockHeader.
-    if (!CheckBlockHeader(block, state, consensusParams, fCheckPOW))
-        return false;
+    if (!IsPoSBlock(block)) {
+        if (!CheckBlockHeader(block, state, consensusParams, fCheckPOW))
+            return false;
+    } else {
+        // todo: check PoS block header
+    }
+
 
     // Signet only: check block solution
     if (consensusParams.signet_blocks && fCheckPOW && !CheckSignetBlockSolution(block, consensusParams)) {
@@ -3482,16 +3494,18 @@ static CBlockIndex* GetLastCheckpoint(const CCheckpointData& data) EXCLUSIVE_LOC
  *  in ConnectBlock().
  *  Note that -reindex-chainstate skips the validation that happens here!
  */
-static bool ContextualCheckBlockHeader(const CBlockHeader& block, BlockValidationState& state, const CChainParams& params, const CBlockIndex* pindexPrev, int64_t nAdjustedTime) EXCLUSIVE_LOCKS_REQUIRED(cs_main)
+static bool ContextualCheckBlockHeader(const CBlockHeader& block, BlockValidationState& state, const CChainParams& params, const CBlockIndex* pindexPrev, int64_t nAdjustedTime, const bool is_proof_of_stake) EXCLUSIVE_LOCKS_REQUIRED(cs_main)
 {
     assert(pindexPrev != nullptr);
     const int nHeight = pindexPrev->nHeight + 1;
 
     // Check proof of work
     const Consensus::Params& consensusParams = params.GetConsensus();
-    if (block.nBits != GetNextWorkRequired(pindexPrev, &block, consensusParams))
-        LogPrintf("XWARN: ContextualCheckBlockHeader() nTime %d bad-diffbits : incorrect proof of work\n", block.nTime);
-        //return state.Invalid(BlockValidationResult::BLOCK_INVALID_HEADER, "bad-diffbits", "incorrect proof of work");
+
+    if (block.nBits != GetNextTargetRequired(pindexPrev, &block, is_proof_of_stake, consensusParams))
+        // LogPrintf("XWARN: Skipping target validation!");
+        return state.Invalid(BlockValidationResult::BLOCK_INVALID_HEADER, "bad-diffbits", "incorrect proof of work");
+    LogPrintf("Target validation succeeded against previous block with height %d, nPowPos=%d!\n", pindexPrev->nHeight, pindexPrev->nPowPos);
 
     // Check against checkpoints
     if (fCheckpointsEnabled) {
@@ -3647,7 +3661,7 @@ bool BlockManager::AcceptBlockHeader(const CBlockHeader& block, BlockValidationS
             LogPrintf("ERROR: %s: prev block invalid (validation.cpp, l. 3641)\n", __func__);
             return state.Invalid(BlockValidationResult::BLOCK_INVALID_PREV, "bad-prevblk");
         }
-        if (!ContextualCheckBlockHeader(block, state, chainparams, pindexPrev, GetAdjustedTime()))
+        if (!ContextualCheckBlockHeader(block, state, chainparams, pindexPrev, GetAdjustedTime(), false))
             return error("%s: Consensus::ContextualCheckBlockHeader: %s, %s", __func__, hash.ToString(), state.ToString());
 
         /* Determine if this block descends from any block which has been found
@@ -3690,7 +3704,149 @@ bool BlockManager::AcceptBlockHeader(const CBlockHeader& block, BlockValidationS
         }
     }
     if (pindex == nullptr)
-        pindex = AddToBlockIndex(block);
+        pindex = AddToBlockIndex(block, 0);
+
+    if (ppindex)
+        *ppindex = pindex;
+
+    return true;
+}
+
+bool BlockManager::AcceptProvenBlockHeader(const CProvenBlockHeader& block, BlockValidationState& state, const CChainParams& chainparams, CBlockIndex** ppindex)
+{
+    AssertLockHeld(cs_main);
+    // Check for duplicate
+    uint256 hash = block.GetHash();
+    BlockMap::iterator miSelf = m_block_index.find(hash);
+    CBlockIndex* pindex = nullptr;
+    if (hash != chainparams.GetConsensus().hashGenesisBlock) {
+        if (miSelf != m_block_index.end()) {
+            // Block header is already known.
+            pindex = miSelf->second;
+            if (ppindex)
+                *ppindex = pindex;
+            if (pindex->nStatus & BLOCK_FAILED_MASK) {
+                LogPrintf("ERROR: %s: block %s is marked invalid\n", __func__, hash.ToString());
+                return state.Invalid(BlockValidationResult::BLOCK_CACHED_INVALID, "duplicate");
+            }
+            return true;
+        }
+
+        if (block.txProtocol->IsCoinBase()) {
+            if (!CheckBlockHeader(block, state, chainparams.GetConsensus())) {
+                LogPrint(BCLog::VALIDATION, "%s: Consensus::CheckBlockHeader: %s, %s\n", __func__, hash.ToString(), state.ToString());
+                return false;
+            }
+        } else {
+            if (block.nTransactions < 2 || block.txProtocol->IsCoinStake() == false) {
+                return state.Invalid(BlockValidationResult::BLOCK_INVALID_HEADER, "invalid-pos", "missing or invalid coinstake tx");
+            }
+            if (block.nTime % 64 != 0) {
+                return state.Invalid(BlockValidationResult::BLOCK_INVALID_HEADER, "invalid-pos", "bad pos block time");
+            }
+        }
+
+        // Get prev block index
+        CBlockIndex* pindexPrev = nullptr;
+
+        BlockMap::iterator mi = m_block_index.find(block.hashPrevBlock);
+        if (mi == m_block_index.end()) {
+            LogPrintf("ERROR: %s: prev block not found\n", __func__);
+            return state.Invalid(BlockValidationResult::BLOCK_MISSING_PREV, "prev-blk-not-found");
+        }
+        pindexPrev = (*mi).second;
+        if (pindexPrev->nStatus & BLOCK_FAILED_MASK) {
+            LogPrintf("ERROR: %s: prev block invalid (validation.cpp, l. 3641)\n", __func__);
+            return state.Invalid(BlockValidationResult::BLOCK_INVALID_PREV, "bad-prevblk");
+        }
+        if (!ContextualCheckBlockHeader(block, state, chainparams, pindexPrev, GetAdjustedTime(), block.txProtocol->IsCoinStake()))
+            return error("%s: Consensus::ContextualCheckBlockHeader: %s, %s", __func__, hash.ToString(), state.ToString());
+
+        // check coinstake tx doen't spend too early
+        if (block.txProtocol->IsCoinStake()) {
+            COutPoint prevOut = block.txProtocol->vin[0].prevout;
+            Coin coin;
+            CCoinsViewCache* coins_view = &::ChainstateActive().CoinsTip();
+            if(coins_view->GetCoin(prevOut, coin)) {
+                auto confirmations = pindexPrev->nHeight - coin.nHeight + 1;
+                if (confirmations < 125)
+                    return state.Invalid(BlockValidationResult::BLOCK_INVALID_HEADER, "invalid-pos", "coinstake tx input prevOut has too few confirmations");
+            } else {
+                uint32_t nPowPos;
+                if (block.txProtocol->IsCoinStake())
+                    nPowPos = 2;
+                else
+                    nPowPos = 1;
+
+                if (pindex == nullptr) {
+                    pindex = AddToBlockIndex(block, nPowPos);
+                } else {
+                    pindex->nPowPos = nPowPos;
+                }
+
+
+                if (ppindex)
+                    *ppindex = pindex;
+                return false;
+               /* std::this_thread::sleep_for(std::chrono::milliseconds(5000));
+                goto search;*/
+                //return state.Invalid(BlockValidationResult::BLOCK_INVALID_HEADER, "invalid-pos", "coinstake tx input prevOut not found");
+            }
+        }
+
+
+        /* Determine if this block descends from any block which has been found
+         * invalid (m_failed_blocks), then mark pindexPrev and any blocks between
+         * them as failed. For example:
+         *
+         *                D3
+         *              /
+         *      B2 - C2
+         *    /         \
+         *  A             D2 - E2 - F2
+         *    \
+         *      B1 - C1 - D1 - E1
+         *
+         * In the case that we attempted to reorg from E1 to F2, only to find
+         * C2 to be invalid, we would mark D2, E2, and F2 as BLOCK_FAILED_CHILD
+         * but NOT D3 (it was not in any of our candidate sets at the time).
+         *
+         * In any case D3 will also be marked as BLOCK_FAILED_CHILD at restart
+         * in LoadBlockIndex.
+         */
+        if (!pindexPrev->IsValid(BLOCK_VALID_SCRIPTS)) {
+            // The above does not mean "invalid": it checks if the previous block
+            // hasn't been validated up to BLOCK_VALID_SCRIPTS. This is a performance
+            // optimization, in the common case of adding a new block to the tip,
+            // we don't need to iterate over the failed blocks list.
+            for (const CBlockIndex* failedit : m_failed_blocks) {
+                if (pindexPrev->GetAncestor(failedit->nHeight) == failedit) {
+                    assert(failedit->nStatus & BLOCK_FAILED_VALID);
+                    CBlockIndex* invalid_walk = pindexPrev;
+                    while (invalid_walk != failedit) {
+                        invalid_walk->nStatus |= BLOCK_FAILED_CHILD;
+                        setDirtyBlockIndex.insert(invalid_walk);
+                        invalid_walk = invalid_walk->pprev;
+                    }
+                    LogPrintf("ERROR: %s: prev block invalid  (validation.cpp, l. 3680)\n", __func__);
+                    return state.Invalid(BlockValidationResult::BLOCK_INVALID_PREV, "bad-prevblk");
+                }
+            }
+        }
+    }
+
+    uint32_t nPowPos;
+    if (block.txProtocol->IsCoinStake())
+        nPowPos = 2;
+    else
+        nPowPos = 1;
+
+    if (pindex == nullptr) {
+        pindex = AddToBlockIndex(block, nPowPos);
+    } else {
+        pindex->nPowPos = nPowPos;
+    }
+
 
     if (ppindex)
         *ppindex = pindex;
@@ -3726,6 +3882,32 @@ bool ChainstateManager::ProcessNewBlockHeaders(const std::vector<CBlockHeader>& 
     return true;
 }
 
+bool ChainstateManager::ProcessNewProvenBlockHeaders(const std::vector<CProvenBlockHeader>& headers, BlockValidationState& state, const CChainParams& chainparams, const CBlockIndex** ppindex)
+{
+    AssertLockNotHeld(cs_main);
+    {
+        LOCK(cs_main);
+        for (const CProvenBlockHeader& header : headers) {
+            CBlockIndex* pindex = nullptr; // Use a temp pindex instead of ppindex to avoid a const_cast
+            bool accepted = m_blockman.AcceptProvenBlockHeader(
+                header, state, chainparams, &pindex);
+            ::ChainstateActive().CheckBlockIndex(chainparams.GetConsensus());
+
+            if (!accepted) {
+                return false;
+            }
+            if (ppindex) {
+                *ppindex = pindex;
+            }
+        }
+    }
+    if (NotifyHeaderTip()) {
+        if (::ChainstateActive().IsInitialBlockDownload() && ppindex && *ppindex) {
+            LogPrintf("Synchronizing blockheaders, height: %d (~%.2f%%)\n", (*ppindex)->nHeight, 100.0 / ((*ppindex)->nHeight + (GetAdjustedTime() - (*ppindex)->GetBlockTime()) / Params().GetConsensus().nPowTargetSpacing) * (*ppindex)->nHeight);
+        }
+    }
+    return true;
+}
 /** Store block on disk. If dbp is non-nullptr, the file is known to already reside on disk */
 static FlatFilePos SaveBlockToDisk(const CBlock& block, int nHeight, const CChainParams& chainparams, const FlatFilePos* dbp)
 {
@@ -3876,7 +4058,7 @@ bool TestBlockValidity(BlockValidationState& state, const CChainParams& chainpar
     indexDummy.phashBlock = &block_hash;
 
     // NOTE: CheckBlockHeader is called by CheckBlock
-    if (!ContextualCheckBlockHeader(block, state, chainparams, pindexPrev, GetAdjustedTime()))
+    if (!ContextualCheckBlockHeader(block, state, chainparams, pindexPrev, GetAdjustedTime(), IsPoSBlock(block)))
         return error("%s: Consensus::ContextualCheckBlockHeader: %s", __func__, state.ToString());
     if (!CheckBlock(block, state, chainparams.GetConsensus(), fCheckPOW, fCheckMerkleRoot))
         return error("%s: Consensus::CheckBlock: %s", __func__, state.ToString());
@@ -4272,8 +4454,10 @@ bool CVerifyDB::VerifyDB(const CChainParams& chainparams, CCoinsView* coinsview,
     BlockValidationState state;
     int reportDone = 0;
     LogPrintf("[0%%]..."); /* Continued */
+
     for (pindex = ::ChainActive().Tip(); pindex && pindex->pprev; pindex = pindex->pprev) {
         const int percentageDone = std::max(1, std::min(99, (int)(((double)(::ChainActive().Height() - pindex->nHeight)) / (double)nCheckDepth * (nCheckLevel >= 4 ? 50 : 100))));
+        assert(pindex->nPowPos != 0);
         if (reportDone < percentageDone / 10) {
             // report every 10% step
             LogPrintf("[%d%%]...", percentageDone); /* Continued */
@@ -4645,7 +4829,7 @@ bool CChainState::LoadGenesisBlock(const CChainParams& chainparams)
         FlatFilePos blockPos = SaveBlockToDisk(block, 0, chainparams, nullptr);
         if (blockPos.IsNull())
             return error("%s: writing genesis block to disk failed", __func__);
-        CBlockIndex* pindex = m_blockman.AddToBlockIndex(block);
+        CBlockIndex* pindex = m_blockman.AddToBlockIndex(block, 1);
         ReceivedBlockTransactions(block, pindex, blockPos, chainparams.GetConsensus());
     } catch (const std::runtime_error& e) {
         return error("%s: failed to write genesis block: %s", __func__, e.what());

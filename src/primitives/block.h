@@ -112,7 +112,7 @@ public:
     std::vector<unsigned char> vSignature;
 
     /** coinstake transaction */
-    mutable CTransactionRef txCoinstake;
+    mutable CTransactionRef txProtocol;
 
     CProvenBlockHeader()
     {
@@ -138,14 +138,13 @@ public:
         // signature
         READWRITE(obj.vSignature);
         // transaction (serialization only, deserialization must be done separately)
-        SER_WRITE(obj, obj.txCoinstake->Serialize(s));
-       
+        SER_WRITE(obj, obj.txProtocol->Serialize(s));
     }
 
     void SetNull()
     {
         CBlockHeader::SetNull();
-        txCoinstake = MakeTransactionRef(CTransaction());
+        txProtocol = MakeTransactionRef(CTransaction());
     }
 };
 
