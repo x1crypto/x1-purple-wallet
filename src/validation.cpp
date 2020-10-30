@@ -52,6 +52,7 @@
 #include <string>
 
 #include <boost/algorithm/string/replace.hpp>
+#include <merkleblock.h> // needed for provhdr validation
 
 #define MICRO 0.000001
 #define MILLI 0.001
@@ -2153,7 +2154,7 @@ bool CChainState::ConnectBlock(const CBlock& block, BlockValidationState& state,
             return state.Invalid(BlockValidationResult::BLOCK_CONSENSUS, "bad-blk-sigops");
         }
 
-        if (!tx.IsCoinBase() && !tx.IsCoinBase()) {
+        if (!tx.IsCoinBase()) {
             std::vector<CScriptCheck> vChecks;
             bool fCacheResults = fJustCheck; /* Don't cache results if we're actually connecting blocks (still consult the cache, though) */
             TxValidationState tx_state;
@@ -3169,7 +3170,7 @@ void ResetBlockFailureFlags(CBlockIndex* pindex)
     return ::ChainstateActive().ResetBlockFailureFlags(pindex);
 }
 
-CBlockIndex* BlockManager::AddToBlockIndex(const CBlockHeader& block, const uint32_t nPosPow)
+CBlockIndex* BlockManager::AddToBlockIndex(const CBlockHeader& block, const uint32_t nPosPow, const uint256 stakeModifierV2)
 {
     AssertLockHeld(cs_main);
 
@@ -3182,7 +3183,10 @@ CBlockIndex* BlockManager::AddToBlockIndex(const CBlockHeader& block, const uint
     // Construct new block index object
     CBlockIndex* pindexNew = new CBlockIndex(block);
 
+    // add pos data
     pindexNew->nPowPos = nPosPow;
+    pindexNew->stakeModifierV2 = stakeModifierV2;
+
     // We assign the sequence id to blocks only when the full data is available,
     // to avoid miners withholding blocks but broadcasting headers, to get a
     // competitive advantage.
@@ -3503,9 +3507,7 @@ static bool ContextualCheckBlockHeader(const CBlockHeader& block, BlockValidatio
     const Consensus::Params& consensusParams = params.GetConsensus();
 
     if (block.nBits != GetNextTargetRequired(pindexPrev, &block, is_proof_of_stake, consensusParams))
-        // LogPrintf("XWARN: Skipping target validation!");
         return state.Invalid(BlockValidationResult::BLOCK_INVALID_HEADER, "bad-diffbits", "incorrect proof of work");
-    LogPrintf("Target validation succeeded against previous block with height %d, nPowPos=%d!\n", pindexPrev->nHeight, pindexPrev->nPowPos);
 
     // Check against checkpoints
     if (fCheckpointsEnabled) {
@@ -3704,14 +3706,14 @@ bool BlockManager::AcceptBlockHeader(const CBlockHeader& block, BlockValidationS
         }
     }
     if (pindex == nullptr)
-        pindex = AddToBlockIndex(block, 0);
+        pindex = AddToBlockIndex(block, 0, uint256::ZERO);
 
     if (ppindex)
         *ppindex = pindex;
 
     return true;
 }
-
+#include <pubkey.h>
 bool BlockManager::AcceptProvenBlockHeader(const CProvenBlockHeader& block, BlockValidationState& state, const CChainParams& chainparams, CBlockIndex** ppindex)
 {
     AssertLockHeld(cs_main);
@@ -3719,6 +3721,7 @@ bool BlockManager::AcceptProvenBlockHeader(const CProvenBlockHeader& block, Bloc
     uint256 hash = block.GetHash();
     BlockMap::iterator miSelf = m_block_index.find(hash);
     CBlockIndex* pindex = nullptr;
+    uint256 stakeModifierV2;
     if (hash != chainparams.GetConsensus().hashGenesisBlock) {
         if (miSelf != m_block_index.end()) {
             // Block header is already known.
@@ -3738,9 +3741,11 @@ bool BlockManager::AcceptProvenBlockHeader(const CProvenBlockHeader& block, Bloc
                 return false;
             }
         } else {
+            // check coinstake tx is present
             if (block.nTransactions < 2 || block.txProtocol->IsCoinStake() == false) {
                 return state.Invalid(BlockValidationResult::BLOCK_INVALID_HEADER, "invalid-pos", "missing or invalid coinstake tx");
             }
+            // check pos block time
             if (block.nTime % 64 != 0) {
                 return state.Invalid(BlockValidationResult::BLOCK_INVALID_HEADER, "invalid-pos", "bad pos block time");
             }
@@ -3762,38 +3767,116 @@ bool BlockManager::AcceptProvenBlockHeader(const CProvenBlockHeader& block, Bloc
         if (!ContextualCheckBlockHeader(block, state, chainparams, pindexPrev, GetAdjustedTime(), block.txProtocol->IsCoinStake()))
             return error("%s: Consensus::ContextualCheckBlockHeader: %s, %s", __func__, hash.ToString(), state.ToString());
 
-        // check coinstake tx doen't spend too early
-        if (block.txProtocol->IsCoinStake()) {
-            COutPoint prevOut = block.txProtocol->vin[0].prevout;
-            Coin coin;
+        bool checkUtxoSet = false;
+        // check coinstake tx prevOut is mature
+        Coin coin;
+        const COutPoint prevOut = block.txProtocol->vin[0].prevout;
+        if (block.txProtocol->IsCoinStake() && checkUtxoSet) {
             CCoinsViewCache* coins_view = &::ChainstateActive().CoinsTip();
-            if(coins_view->GetCoin(prevOut, coin)) {
+            if (coins_view->GetCoin(prevOut, coin)) {
                 auto confirmations = pindexPrev->nHeight - coin.nHeight + 1;
                 if (confirmations < 125)
                     return state.Invalid(BlockValidationResult::BLOCK_INVALID_HEADER, "invalid-pos", "coinstake tx input prevOut has too few confirmations");
             } else {
-                uint32_t nPowPos;
-                if (block.txProtocol->IsCoinStake())
-                    nPowPos = 2;
-                else
-                    nPowPos = 1;
-
-                if (pindex == nullptr) {
-                    pindex = AddToBlockIndex(block, nPowPos);
-                } else {
-                    pindex->nPowPos = nPowPos;
+                if (!::ChainstateActive().IsInitialBlockDownload()) {
+                    LogPrintf("ERROR: %s: coinstake tx input prevOut not found\n", __func__);
+                    return state.Invalid(BlockValidationResult::BLOCK_INVALID_HEADER, "invalid-pos", "coinstake tx input prevOut not found");
                 }
-
-
-                if (ppindex)
-                    *ppindex = pindex;
-                return false;
-               /* std::this_thread::sleep_for(std::chrono::milliseconds(5000));
-                goto search;*/
-                //return state.Invalid(BlockValidationResult::BLOCK_INVALID_HEADER, "invalid-pos", "coinstake tx input prevOut not found");
             }
         }
 
+        // check coinstake tx signature (but only if the prevOut is actually available)
+        if (block.txProtocol->IsCoinStake() && checkUtxoSet && !coin.out.IsNull()) {
+            ScriptError error = SCRIPT_ERR_OK;
+            CTransaction tx = *block.txProtocol;
+
+            const auto checker = TransactionSignatureChecker(&tx, 0u, coin.out.nValue);
+            if (!VerifyScript(block.txProtocol->vin[0].scriptSig, coin.out.scriptPubKey, nullptr, SCRIPT_VERIFY_NONE, checker, &error)) {
+                LogPrintf("Signature check failed at height %d\n", pindexPrev->nHeight + 1);
+                return state.Invalid(BlockValidationResult::BLOCK_INVALID_HEADER, "invalid-pos", "invalid coinstake signature");
+            }
+        }
+
+        // check block signature
+        if (block.txProtocol->IsCoinStake()) {
+            bool fSuccess = false;
+            if (block.txProtocol->vout.size() >= 3) {
+                CScript scriptPubKey = block.txProtocol->vout[1].scriptPubKey;
+                CScript::const_iterator pc = scriptPubKey.begin();
+                opcodetype opcode;
+
+                if (scriptPubKey.GetOp(pc, opcode)) {
+                    if (opcode == OP_RETURN) {
+                        std::vector<unsigned char> data;
+                        if (scriptPubKey.GetOp(pc, opcode, data)) {
+                            if (data.size() == 33) {
+                                auto pubKey = CPubKey(data);
+                                if (pubKey.IsFullyValid() && pubKey.Verify(hash, block.vSignature)) {
+                                    fSuccess = true;
+                                }
+                            } else
+                                LogPrintf("ERROR: %s: data.size() == 33 failed at height %d\n", __func__, pindexPrev->nHeight + 1);
+                        }
+                    }
+                }
+            } else
+                LogPrintf("ERROR: %s: block.txProtocol->vout.size() >= 3 failed at height %d\n", __func__, pindexPrev->nHeight + 1);
+
+            if (!fSuccess) {
+                LogPrintf("ERROR: %s: Block hash signature check with coinstake public key failed\n", __func__);
+                return state.Invalid(BlockValidationResult::BLOCK_INVALID_HEADER, "invalid-pos", "invalid block signature");
+            }
+        }
+
+
+        // compute the stake modifier for the incoming header
+        uint256 stakeModifierInputHash;
+        if (block.txProtocol->IsCoinStake()) {
+            stakeModifierInputHash = block.txProtocol->vin[0].prevout.hash;
+        } else {
+            stakeModifierInputHash = hash;
+        }
+
+        CHashWriter ss(SER_GETHASH, 0);
+        ss << stakeModifierInputHash << pindexPrev->GetStakeModifierV2();
+        stakeModifierV2 = ss.GetHash();
+
+        // check kernel hash
+        if (block.txProtocol->IsCoinStake()) {
+            // calculate kernel, hash it and check if kernel hash meets target
+            arith_uint256 target;
+            target.SetCompact(block.nBits);
+
+            const auto weight = arith_uint256(coin.out.nValue);
+
+            const arith_uint256 weightedTarget = weight * target;
+
+            CHashWriter sk(SER_GETHASH, 0);
+            sk << pindexPrev->GetStakeModifierV2()
+               << block.txProtocol->vin[0].prevout.hash
+               << block.txProtocol->vin[0].prevout.n
+               << block.nTime;
+
+            const auto posKernelHash = sk.GetHash();
+
+            if (UintToArith256(posKernelHash) > weightedTarget) {
+                LogPrintf("ERROR: %s: Proof-of-stake kernel hash above target\n", __func__);
+                return state.Invalid(BlockValidationResult::BLOCK_INVALID_HEADER, "invalid-pos", "pos kernel hash above target");
+            }
+        }
+
+        // check header merkle proof
+        if (block.txProtocol->IsCoinStake()) {
+            CPartialMerkleTree mtHeader = CPartialMerkleTree(block.vHash, block.vBits);
+            std::vector<uint256> vProtocolTransaction;
+            vProtocolTransaction.push_back(block.txProtocol->GetHash());
+            std::vector<unsigned int> vnIndex;
+            auto hashMerkleRoot = mtHeader.ExtractMatches(vProtocolTransaction, vnIndex);
+            if (hashMerkleRoot == uint256::ZERO) {
+                LogPrintf("ERROR: %s: provhdr bad merkle proof\n", __func__);
+                return state.Invalid(BlockValidationResult::BLOCK_INVALID_HEADER, "invalid-pos", "provhdr bad merkle proof");
+            }
+        }
 
         /* Determine if this block descends from any block which has been found
          * invalid (m_failed_blocks), then mark pindexPrev and any blocks between
@@ -3835,14 +3918,18 @@ bool BlockManager::AcceptProvenBlockHeader(const CProvenBlockHeader& block, Bloc
         }
     }
 
+    // caution: if we return earlier, we must not forget that we set the pos parameters on CBlockIndex anyway!
+
     uint32_t nPowPos;
     if (block.txProtocol->IsCoinStake())
         nPowPos = 2;
     else
         nPowPos = 1;
 
+    assert(stakeModifierV2 != uint256::ZERO);
+
     if (pindex == nullptr) {
-        pindex = AddToBlockIndex(block, nPowPos);
+        pindex = AddToBlockIndex(block, nPowPos, stakeModifierV2);
     } else {
         pindex->nPowPos = nPowPos;
     }
@@ -4829,7 +4916,7 @@ bool CChainState::LoadGenesisBlock(const CChainParams& chainparams)
         FlatFilePos blockPos = SaveBlockToDisk(block, 0, chainparams, nullptr);
         if (blockPos.IsNull())
             return error("%s: writing genesis block to disk failed", __func__);
-        CBlockIndex* pindex = m_blockman.AddToBlockIndex(block, 1);
+        CBlockIndex* pindex = m_blockman.AddToBlockIndex(block, 0, uint256::ZERO);
         ReceivedBlockTransactions(block, pindex, blockPos, chainparams.GetConsensus());
     } catch (const std::runtime_error& e) {
         return error("%s: failed to write genesis block: %s", __func__, e.what());

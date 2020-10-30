@@ -192,6 +192,9 @@ public:
     //! not set = 0, pow = 1, pos = 2
     uint32_t nPowPos{0};
 
+    //! stake modifier v2
+    uint256 stakeModifierV2{0};
+
     CBlockIndex()
     {
     }
@@ -249,6 +252,13 @@ public:
             return false;
         assert(nPowPos != 0);
         return nPowPos == 2;
+    }
+
+    uint256 GetStakeModifierV2() const
+    {
+        if (nHeight > 0)
+            return stakeModifierV2;
+        return uint256::ZERO;
     }
 
     /**
@@ -368,7 +378,9 @@ public:
         READWRITE(obj.nBits);
         READWRITE(obj.nNonce);
 
+        // pos data
         READWRITE(obj.nPowPos);
+        READWRITE(obj.stakeModifierV2);
     }
 
     uint256 GetBlockHash() const
