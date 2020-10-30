@@ -155,8 +155,19 @@ RPCHelpMan importprivkey()
             throw JSONRPCError(RPC_WALLET_ERROR, "Wallet is currently rescanning. Abort existing rescan or wait.");
         }
 
+        // extend this for raw hex private keys
         CKey key = DecodeSecret(strSecret);
-        if (!key.IsValid()) throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Invalid private key encoding");
+        if (!key.IsValid()) {
+            // now try raw hex
+            if (IsHex(strSecret)) {
+                std::vector<unsigned char> vRawKey = ParseHex(strSecret);
+                if (vRawKey.size() == 32) {
+                    key.Set(vRawKey.begin(), vRawKey.end(), true);
+                }
+            }
+            if (!key.IsValid())
+                throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Invalid private key encoding");
+        }
 
         CPubKey pubkey = key.GetPubKey();
         CHECK_NONFATAL(key.VerifyPubKey(pubkey));
