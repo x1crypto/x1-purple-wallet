@@ -189,7 +189,7 @@ public:
     //! (memory only) Maximum nTime in the chain up to and including this block.
     unsigned int nTimeMax{0};
 
-    //! not set = 0, pow = 1, pos = 2
+    //! not set = 0, pow = 1, pos = 2, genesis = 3
     uint32_t nPowPos{0};
 
     //! stake modifier v2

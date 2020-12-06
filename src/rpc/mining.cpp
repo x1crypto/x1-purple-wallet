@@ -898,6 +898,18 @@ static RPCHelpMan getblocktemplate()
         result.pushKV("default_witness_commitment", HexStr(pblocktemplate->vchCoinbaseCommitment));
     }
 
+    result.pushKV("stakemodifierv2", pindexPrev->stakeModifierV2.GetHex());
+
+    uint32_t posBits = GetNextTargetRequired(ChainActive().Tip(), nullptr, true, consensusParams);
+    result.pushKV("posbits", strprintf("%08x", posBits));
+
+    arith_uint256 posTarget = arith_uint256().SetCompact(posBits);
+    result.pushKV("postarget", posTarget.GetHex());
+
+    result.pushKV("previousblockconsensus", pindexPrev->IsProofOfStake() ? "pos" : "pow");
+
+    result.pushKV("previousblocktime", (int64_t)pindexPrev->GetBlockTime());
+   
     return result;
 },
     };

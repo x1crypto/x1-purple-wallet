@@ -12,7 +12,7 @@
  * for both bitcoind and bitcoin-qt, to make it harder for attackers to
  * target servers or GUI users specifically.
  */
-const std::string CLIENT_NAME("xds-sd");
+const std::string CLIENT_NAME("XDS Satoshi");
 
 
 #ifdef HAVE_BUILD_INFO
@@ -62,9 +62,8 @@ std::string FormatFullVersion()
 std::string FormatSubVersion(const std::string& name, int nClientVersion, const std::vector<std::string>& comments)
 {
     std::ostringstream ss;
-    //ss << "/"; todo
-    //ss << name << ":" << FormatVersion(nClientVersion);
-    ss << name << ":" << "1.0.0";
+    ss << "/";
+    ss << name << ":" << FormatVersion(nClientVersion);
     if (!comments.empty())
     {
         std::vector<std::string>::const_iterator it(comments.begin());
@@ -73,6 +72,6 @@ std::string FormatSubVersion(const std::string& name, int nClientVersion, const 
             ss << "; " << *it;
         ss << ")";
     }
-    //ss << "/";
+    ss << "/";
     return ss.str();
 }

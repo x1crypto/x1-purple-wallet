@@ -1488,6 +1488,8 @@ bool CheckInputScripts(const CTransaction& tx, TxValidationState& state, const C
 {
     if (tx.IsCoinBase()) return true;
 
+    // the coinstake tx must also be checked and the checks must pass
+
     if (pvChecks) {
         pvChecks->reserve(tx.vin.size());
     }
@@ -3173,6 +3175,13 @@ void ResetBlockFailureFlags(CBlockIndex* pindex)
 CBlockIndex* BlockManager::AddToBlockIndex(const CBlockHeader& block, const uint32_t nPosPow, const uint256 stakeModifierV2)
 {
     AssertLockHeld(cs_main);
+    if (nPosPow == 3 /* geneis block */) {
+        assert(stakeModifierV2 == uint256::ZERO);
+    } else {
+        assert(nPosPow == 1 || nPosPow == 2);
+        assert(stakeModifierV2 != uint256::ZERO); // that's at least very unlikely
+    }
+   
 
     // Check for duplicate
     uint256 hash = block.GetHash();
@@ -3506,8 +3515,17 @@ static bool ContextualCheckBlockHeader(const CBlockHeader& block, BlockValidatio
     // Check proof of work
     const Consensus::Params& consensusParams = params.GetConsensus();
 
-    if (block.nBits != GetNextTargetRequired(pindexPrev, &block, is_proof_of_stake, consensusParams))
-        return state.Invalid(BlockValidationResult::BLOCK_INVALID_HEADER, "bad-diffbits", "incorrect proof of work");
+    bool isTestBlock = false;
+    uint32_t minTarget = 0x1e0fffff;
+    if (is_proof_of_stake || block.nBits != minTarget) {
+        // this is not a drill!
+        if (block.nBits != GetNextTargetRequired(pindexPrev, &block, is_proof_of_stake, consensusParams))
+            return state.Invalid(BlockValidationResult::BLOCK_INVALID_HEADER, "bad-diffbits", "incorrect proof of work");
+    }else {
+        LogPrintf("XWARN: %s: Processing mined test block for new height %d\n", __func__, nHeight);
+        isTestBlock = true;
+    }
+       
 
     // Check against checkpoints
     if (fCheckpointsEnabled) {
@@ -3705,8 +3723,11 @@ bool BlockManager::AcceptBlockHeader(const CBlockHeader& block, BlockValidationS
             }
         }
     }
-    if (pindex == nullptr)
-        pindex = AddToBlockIndex(block, 0, uint256::ZERO);
+    if (pindex == nullptr) {
+        // assume this is the genesis block!
+        assert(hash == chainparams.GetConsensus().hashGenesisBlock);
+        pindex = AddToBlockIndex(block, 3 /* genesis block */, uint256::ZERO);
+    }
 
     if (ppindex)
         *ppindex = pindex;
@@ -3724,7 +3745,7 @@ bool BlockManager::AcceptProvenBlockHeader(const CProvenBlockHeader& block, Bloc
     uint256 stakeModifierV2;
     if (hash != chainparams.GetConsensus().hashGenesisBlock) {
         if (miSelf != m_block_index.end()) {
-            // Block header is already known.
+            // Block header is already known - todo: this bypasses all checks, which is not desired in most cases
             pindex = miSelf->second;
             if (ppindex)
                 *ppindex = pindex;
@@ -3753,6 +3774,9 @@ bool BlockManager::AcceptProvenBlockHeader(const CProvenBlockHeader& block, Bloc
 
         // Get prev block index
         CBlockIndex* pindexPrev = nullptr;
+
+        // debug
+        LogPrintf("DEBUG: %s: searching prev block %s\n", __func__, block.hashPrevBlock.ToString());
 
         BlockMap::iterator mi = m_block_index.find(block.hashPrevBlock);
         if (mi == m_block_index.end()) {
@@ -3944,6 +3968,7 @@ bool BlockManager::AcceptProvenBlockHeader(const CProvenBlockHeader& block, Bloc
 // Exposed wrapper for AcceptBlockHeader
 bool ChainstateManager::ProcessNewBlockHeaders(const std::vector<CBlockHeader>& headers, BlockValidationState& state, const CChainParams& chainparams, const CBlockIndex** ppindex)
 {
+    // todo: we should probably never be here, because we need proven headers!
     AssertLockNotHeld(cs_main);
     {
         LOCK(cs_main);
@@ -4026,7 +4051,33 @@ bool CChainState::AcceptBlock(const std::shared_ptr<const CBlock>& pblock, Block
     CBlockIndex* pindexDummy = nullptr;
     CBlockIndex*& pindex = ppindex ? *ppindex : pindexDummy;
 
-    bool accepted_header = m_blockman.AcceptBlockHeader(block, state, chainparams, &pindex);
+    // in AcceptBlock, create and check ProvenBlockHeader
+    
+    // standard block header
+    CProvenBlockHeader provenHeader = pblock->GetBlockHeader();
+
+    // merkle proof
+    auto hashPTx = std::set<uint256>();
+    hashPTx.insert(provenHeader.txProtocol->GetHash());
+    auto merkle_block = CMerkleBlock(block, hashPTx);
+    provenHeader.nTransactions = merkle_block.txn.GetNumTransactions();
+    provenHeader.vHash = merkle_block.txn.vHash;
+    provenHeader.vBits = merkle_block.txn.vBits;
+
+    // block signature
+    provenHeader.vSignature = block.vPoSBlkSig;
+
+    // protocol transaction
+    if (provenHeader.nTransactions == 1) {
+        provenHeader.txProtocol = block.vtx[0];
+    } else {
+        if (block.vtx[1]->IsCoinStake()) {
+            provenHeader.txProtocol = block.vtx[1];
+        } else {
+            provenHeader.txProtocol = block.vtx[0];
+        }
+    }
+    bool accepted_header = m_blockman.AcceptProvenBlockHeader(provenHeader, state, chainparams, &pindex);
     CheckBlockIndex(chainparams.GetConsensus());
 
     if (!accepted_header)
@@ -4916,7 +4967,7 @@ bool CChainState::LoadGenesisBlock(const CChainParams& chainparams)
         FlatFilePos blockPos = SaveBlockToDisk(block, 0, chainparams, nullptr);
         if (blockPos.IsNull())
             return error("%s: writing genesis block to disk failed", __func__);
-        CBlockIndex* pindex = m_blockman.AddToBlockIndex(block, 0, uint256::ZERO);
+        CBlockIndex* pindex = m_blockman.AddToBlockIndex(block, 3 /* genesis block */ , uint256::ZERO);
         ReceivedBlockTransactions(block, pindex, blockPos, chainparams.GetConsensus());
     } catch (const std::runtime_error& e) {
         return error("%s: failed to write genesis block: %s", __func__, e.what());
