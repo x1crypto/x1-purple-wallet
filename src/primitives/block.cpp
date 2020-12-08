@@ -8,6 +8,15 @@
 #include <hash.h>
 #include <tinyformat.h>
 
+std::vector<unsigned char> BitsToBytesPH(const std::vector<bool>& bits)
+{
+    std::vector<unsigned char> ret((bits.size() + 7) / 8);
+    for (unsigned int p = 0; p < bits.size(); p++) {
+        ret[p / 8] |= bits[p] << (p % 8);
+    }
+    return ret;
+}
+
 std::vector<bool> BytesToBitsPH(const std::vector<unsigned char>& bytes)
 {
     std::vector<bool> ret(bytes.size() * 8);

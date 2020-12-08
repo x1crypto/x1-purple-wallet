@@ -10,6 +10,8 @@
 #include <serialize.h>
 #include <uint256.h>
 
+// Helper functions for serialization, see merkleblock.h
+std::vector<unsigned char> BitsToBytesPH(const std::vector<bool>& bits);
 std::vector<bool> BytesToBitsPH(const std::vector<unsigned char>& bytes);
 
 /** Nodes collect new transactions into a block, hash them into a hash tree,
@@ -134,7 +136,7 @@ public:
         // merkle proof
         READWRITE(obj.nTransactions, obj.vHash);
         std::vector<unsigned char> bytes;
-        SER_WRITE(obj, bytes = BitsToBytes(obj.vBits));
+        SER_WRITE(obj, bytes = BitsToBytesPH(obj.vBits));
         READWRITE(bytes);
         SER_READ(obj, obj.vBits = BytesToBitsPH(bytes));
         // signature
