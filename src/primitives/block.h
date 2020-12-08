@@ -134,7 +134,8 @@ public:
         std::vector<unsigned char> bytes;
         SER_WRITE(obj, bytes = BitsToBytes(obj.vBits));
         READWRITE(bytes);
-        SER_READ(obj, obj.vBits = BytesToBits(bytes));
+        auto vBits = BytesToBits(bytes);
+        SER_READ(obj, obj.vBits = vBits);
         // signature
         READWRITE(obj.vSignature);
         // transaction (serialization only, deserialization must be done separately)
