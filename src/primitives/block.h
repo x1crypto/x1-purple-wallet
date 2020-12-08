@@ -134,14 +134,22 @@ public:
         std::vector<unsigned char> bytes;
         SER_WRITE(obj, bytes = BitsToBytes(obj.vBits));
         READWRITE(bytes);
-        auto vBits = BytesToBits(bytes);
-        SER_READ(obj, obj.vBits = vBits);
+        SER_READ(obj, obj.vBits = obj.BytesToBits(bytes));
         // signature
         READWRITE(obj.vSignature);
         // transaction (serialization only, deserialization must be done separately)
         SER_WRITE(obj, obj.txProtocol->Serialize(s));
     }
 
+    std::vector<bool> BytesToBits(const std::vector<unsigned char>& bytes)
+    {
+        std::vector<bool> ret(bytes.size() * 8);
+        for (unsigned int p = 0; p < ret.size(); p++) {
+            ret[p] = (bytes[p / 8] & (1 << (p % 8))) != 0;
+        }
+        return ret;
+    }
+	
     void SetNull()
     {
         CBlockHeader::SetNull();
