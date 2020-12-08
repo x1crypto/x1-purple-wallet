@@ -10,6 +10,8 @@
 #include <serialize.h>
 #include <uint256.h>
 
+std::vector<bool> BytesToBitsPH(const std::vector<unsigned char>& bytes);
+
 /** Nodes collect new transactions into a block, hash them into a hash tree,
  * and scan through nonce values to make the block's hash satisfy proof-of-work
  * requirements.  When they solve the proof-of-work, they broadcast the block
@@ -134,21 +136,14 @@ public:
         std::vector<unsigned char> bytes;
         SER_WRITE(obj, bytes = BitsToBytes(obj.vBits));
         READWRITE(bytes);
-        SER_READ(obj, obj.vBits = obj.BytesToBits(bytes));
+        SER_READ(obj, obj.vBits = BytesToBitsPH(bytes));
         // signature
         READWRITE(obj.vSignature);
         // transaction (serialization only, deserialization must be done separately)
         SER_WRITE(obj, obj.txProtocol->Serialize(s));
     }
 
-    std::vector<bool> BytesToBits(const std::vector<unsigned char>& bytes)
-    {
-        std::vector<bool> ret(bytes.size() * 8);
-        for (unsigned int p = 0; p < ret.size(); p++) {
-            ret[p] = (bytes[p / 8] & (1 << (p % 8))) != 0;
-        }
-        return ret;
-    }
+   
 	
     void SetNull()
     {

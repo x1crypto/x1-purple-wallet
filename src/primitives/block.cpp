@@ -8,6 +8,15 @@
 #include <hash.h>
 #include <tinyformat.h>
 
+std::vector<bool> BytesToBitsPH(const std::vector<unsigned char>& bytes)
+{
+    std::vector<bool> ret(bytes.size() * 8);
+    for (unsigned int p = 0; p < ret.size(); p++) {
+        ret[p] = (bytes[p / 8] & (1 << (p % 8))) != 0;
+    }
+    return ret;
+}
+
 uint256 CBlockHeader::GetHash() const
 {
     if (this->nVersion == 1) {
