@@ -112,6 +112,7 @@ public:
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].bit = 28;
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].nStartTime = 1199145601; // January 1, 2008 (any past value should work)
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].nTimeout = 1230767999;   // December 31, 2008 (any past value should work)
+        consensus.RatchetHeight = 163300;
 
         // The best chain should have at least this much work.
         consensus.nMinimumChainWork = uint256S("0x00");
@@ -228,6 +229,10 @@ public:
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].bit = 28;
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].nStartTime = 1199145601; // January 1, 2008 (any past value should work)
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].nTimeout = 1230767999;   // December 31, 2008 (any past value should work)
+        consensus.RatchetHeight = 240;
+        consensus.TestNetLastestRatchetHeight = 704;
+        consensus.PremineHeight = 1;
+        consensus.PremineReward = 158188 * 50 * COIN;
 
         // The best chain should have at least this much work.
         consensus.nMinimumChainWork = uint256S("0x00");
@@ -283,12 +288,7 @@ public:
         bech32_hrp = "xdt";
 
 
-        vFixedSeeds = std::vector<SeedSpec6>({SeedSpec6({{0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xff, 0xff, 0x50, 0xd3, 0x58, 0x8d}, 38333}), // 80.211.88.141
-                                              SeedSpec6({{0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xff, 0xff, 0x92, 0x5a, 0xea, 0x03}, 38333}), // 146.90.234.3
-                                              SeedSpec6({{0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xff, 0xff, 0x86, 0x7a, 0x59, 0x98}, 38333}), // 134.122.89.152
-                                              SeedSpec6({{0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xff, 0xff, 0xa1, 0x23, 0x9c, 0x60}, 38333}), // 161.35.156.96
-                                              SeedSpec6({{0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xff, 0xff, 0x2e, 0x11, 0x61, 0x24}, 38333})} // 46.17.97.36
-        );
+        vFixedSeeds = std::vector<SeedSpec6>();
 
 
         fDefaultConsistencyChecks = false;

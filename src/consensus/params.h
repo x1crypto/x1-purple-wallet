@@ -6,13 +6,12 @@
 #ifndef BITCOIN_CONSENSUS_PARAMS_H
 #define BITCOIN_CONSENSUS_PARAMS_H
 
-#include <uint256.h>
 #include <limits>
+#include <uint256.h>
 
 namespace Consensus {
 
-enum DeploymentPos
-{
+enum DeploymentPos {
     DEPLOYMENT_TESTDUMMY,
     DEPLOYMENT_TAPROOT, // Deployment of Schnorr/Taproot (BIPs 340-342)
     // NOTE: Also add new deployments to VersionBitsDeploymentInfo in versionbits.cpp
@@ -91,6 +90,32 @@ struct Params {
      */
     bool signet_blocks{false};
     std::vector<uint8_t> signet_challenge;
+
+    /** Block height at which XDS PoS/PoW Ratchet becomes active */
+    int RatchetHeight;
+
+    int PremineHeight;
+
+    uint64_t PremineReward;
+
+    /** If the PosPowRatchet rules are active at a block height. */
+    bool IsPosPowRatchetActiveAtHeight(int nHeight) const { return nHeight >= RatchetHeight; }
+
+    bool IsAlgorithmAllowed(bool isProofOfStake, int newBlockHeight) const
+    {
+        if (newBlockHeight < RatchetHeight)
+            return true;
+
+        // for XDS, even block heights must be Proof-of-Stake
+        const bool isPosHeight = newBlockHeight % 2 == 0;
+        if (isProofOfStake && isPosHeight)
+            return true;
+
+        if (!isProofOfStake && !isPosHeight)
+            return true;
+
+        return false;
+    }
 };
 } // namespace Consensus
 

@@ -1213,13 +1213,23 @@ bool ReadRawBlockFromDisk(std::vector<uint8_t>& block, const CBlockIndex* pindex
 
 CAmount GetBlockSubsidy(int nHeight, const Consensus::Params& consensusParams)
 {
+    
     int halvings = nHeight / consensusParams.nSubsidyHalvingInterval;
     // Force block reward to zero when right shift is undefined.
     if (halvings >= 64)
         return 0;
 
-    CAmount nSubsidy = 50 * COIN;
-    // Subsidy is cut in half every 210,000 blocks which will occur approximately every 4 years.
+    
+    if (consensusParams.PremineHeight == 0) {
+        // mainnet
+        CAmount nSubsidy = 50 * COIN;
+        // Subsidy is cut in half every 210,000 blocks which will occur approximately every 4 years.
+        nSubsidy >>= halvings;
+        return nSubsidy;
+    }
+
+    // testnet
+    CAmount nSubsidy = nHeight == consensusParams.PremineHeight ? consensusParams.PremineReward : 50 * COIN;
     nSubsidy >>= halvings;
     return nSubsidy;
 }
@@ -3181,7 +3191,7 @@ CBlockIndex* BlockManager::AddToBlockIndex(const CBlockHeader& block, const uint
         assert(nPosPow == 1 || nPosPow == 2);
         assert(stakeModifierV2 != uint256::ZERO); // that's at least very unlikely
     }
-   
+
 
     // Check for duplicate
     uint256 hash = block.GetHash();
@@ -3515,17 +3525,25 @@ static bool ContextualCheckBlockHeader(const CBlockHeader& block, BlockValidatio
     // Check proof of work
     const Consensus::Params& consensusParams = params.GetConsensus();
 
+    // Check Ratchet sequence
+    if (!consensusParams.IsAlgorithmAllowed(is_proof_of_stake, nHeight)) {
+        const auto requiredAlgorithm = is_proof_of_stake ? "Proof-of_Stake" : "Proof-of-Work";
+        LogPrintf("ERROR: %s: %s required at this height (height %d)\n", __func__, requiredAlgorithm, nHeight);
+        return state.Invalid(BlockValidationResult::BLOCK_INVALID_HEADER, "bad-ratchet-sequence", "ratchet error");
+    }
+
+
     bool isTestBlock = false;
     uint32_t minTarget = 0x1e0fffff;
     if (is_proof_of_stake || block.nBits != minTarget) {
         // this is not a drill!
         if (block.nBits != GetNextTargetRequired(pindexPrev, &block, is_proof_of_stake, consensusParams))
             return state.Invalid(BlockValidationResult::BLOCK_INVALID_HEADER, "bad-diffbits", "incorrect proof of work");
-    }else {
+    } else {
         LogPrintf("XWARN: %s: Processing mined test block for new height %d\n", __func__, nHeight);
         isTestBlock = true;
     }
-       
+
 
     // Check against checkpoints
     if (fCheckpointsEnabled) {
@@ -4052,7 +4070,7 @@ bool CChainState::AcceptBlock(const std::shared_ptr<const CBlock>& pblock, Block
     CBlockIndex*& pindex = ppindex ? *ppindex : pindexDummy;
 
     // in AcceptBlock, create and check ProvenBlockHeader
-    
+
     // standard block header
     CProvenBlockHeader provenHeader = pblock->GetBlockHeader();
 
@@ -4967,7 +4985,7 @@ bool CChainState::LoadGenesisBlock(const CChainParams& chainparams)
         FlatFilePos blockPos = SaveBlockToDisk(block, 0, chainparams, nullptr);
         if (blockPos.IsNull())
             return error("%s: writing genesis block to disk failed", __func__);
-        CBlockIndex* pindex = m_blockman.AddToBlockIndex(block, 3 /* genesis block */ , uint256::ZERO);
+        CBlockIndex* pindex = m_blockman.AddToBlockIndex(block, 3 /* genesis block */, uint256::ZERO);
         ReceivedBlockTransactions(block, pindex, blockPos, chainparams.GetConsensus());
     } catch (const std::runtime_error& e) {
         return error("%s: failed to write genesis block: %s", __func__, e.what());
