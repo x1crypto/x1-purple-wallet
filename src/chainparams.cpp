@@ -230,7 +230,6 @@ public:
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].nStartTime = 1199145601; // January 1, 2008 (any past value should work)
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].nTimeout = 1230767999;   // December 31, 2008 (any past value should work)
         consensus.RatchetHeight = 240;
-        consensus.TestNetLastestRatchetHeight = 704;
         consensus.PremineHeight = 1;
         consensus.PremineReward = 158188 * 50 * COIN;
 
