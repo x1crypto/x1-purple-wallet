@@ -10,6 +10,7 @@
 #include <primitives/block.h>
 #include <uint256.h>
 
+/*
 unsigned int GetNextWorkRequired(const CBlockIndex* pindexLast, const CBlockHeader* pblock, const Consensus::Params& params)
 {
     assert(pindexLast != nullptr);
@@ -43,24 +44,27 @@ unsigned int GetNextWorkRequired(const CBlockIndex* pindexLast, const CBlockHead
     return CalculateNextWorkRequired(pindexLast, pindexFirst->GetBlockTime(), params);
 }
 
+*/
 unsigned int CalculateNextWorkRequired(const CBlockIndex* pindexLast, int64_t nFirstBlockTime, const Consensus::Params& params)
 {
     if (params.fPowPosNoRetargeting)
         return pindexLast->nBits;
 
+    const auto height = pindexLast->nHeight;
+
     // Limit adjustment step
     int64_t nActualTimespan = pindexLast->GetBlockTime() - nFirstBlockTime;
-    if (nActualTimespan < params.nPowTargetTimespan / 4)
-        nActualTimespan = params.nPowTargetTimespan / 4;
-    if (nActualTimespan > params.nPowTargetTimespan * 4)
-        nActualTimespan = params.nPowTargetTimespan * 4;
+    if (nActualTimespan < params.GetnPowTargetTimespan(height) / 4)
+        nActualTimespan = params.GetnPowTargetTimespan(height) / 4;
+    if (nActualTimespan > params.GetnPowTargetTimespan(height) * 4)
+        nActualTimespan = params.GetnPowTargetTimespan(height) * 4;
 
     // Retarget
     const arith_uint256 bnPowLimit = UintToArith256(params.powLimit);
     arith_uint256 bnNew;
     bnNew.SetCompact(pindexLast->nBits);
     bnNew *= nActualTimespan;
-    bnNew /= params.nPowTargetTimespan;
+    bnNew /= params.GetnPowTargetTimespan(height);
 
     if (bnNew > bnPowLimit)
         bnNew = bnPowLimit;
@@ -179,12 +183,15 @@ unsigned int GetNextPosTargetRequired(const CBlockIndex* pindexLastPos, const Co
     const auto adjustedPrevLastPowPosBlockTime = prevLastPosBlock->GetBlockHeader().nTime + powGapSeconds;
 
     // pass in adjustedPrevLastPowPosBlockTime instead of the timestamp of the second block, and continue as normal
-    return CalculatePosRetarget(pindexLastPos->nTime, pindexLastPos->GetBlockHeader().nBits, adjustedPrevLastPowPosBlockTime, params);
+    return CalculatePosRetarget(pindexLastPos->nTime, pindexLastPos->GetBlockHeader().nBits, adjustedPrevLastPowPosBlockTime, params, pindexLastPos->nHeight);
 }
 
-unsigned int CalculatePosRetarget(uint32_t lastPosBlockTime, uint32_t lastPosBlockBits, uint32_t previousPosBlockTime, const Consensus::Params& params)
+unsigned int CalculatePosRetarget(uint32_t lastPosBlockTime, uint32_t lastPosBlockBits, uint32_t previousPosBlockTime, const Consensus::Params& params, uint64_t height)
 {
-    const auto target_spacing = params.nPowTargetSpacing;          // = 256
+    // const auto target_spacing = params.nPowTargetSpacing;          // = 256
+
+    const auto target_spacing = params.GetnPowTargetSpacing(height); // 256 or 600
+
     auto actual_spacing = lastPosBlockTime - previousPosBlockTime; // this is never 0 or negative because that's a consensus rule
 
     // Limit the adjustment step by capping input values that are far from the average.
@@ -217,17 +224,17 @@ unsigned int CalculatePosRetarget(uint32_t lastPosBlockTime, uint32_t lastPosBlo
 unsigned int GetNextPowTargetRequired(const CBlockIndex* pindexLastPow, const Consensus::Params& params)
 {
     // Only change once per difficulty adjustment interval
-    if ((int64_t(pindexLastPow->nHeight) + 1) % params.DifficultyAdjustmentInterval() != 0) {
+    if ((int64_t(pindexLastPow->nHeight) + 1) % params.DifficultyAdjustmentInterval(pindexLastPow->nHeight) != 0) {
         if (params.fPowAllowMinDifficultyBlocks) {
             // Special difficulty rule for testnet:
             // If the new block's timestamp is more than 2 * TargetSpacing.TotalSeconds,
             // then allow mining of a min-difficulty block.
-            if (pindexLastPow->nTime > pindexLastPow->nTime + params.nPowTargetSpacing * 2)
+            if (pindexLastPow->nTime > pindexLastPow->nTime + params.GetnPowTargetSpacing(pindexLastPow->nHeight) * 2)
                 return UintToArith256(params.powLimit).GetCompact();
             else {
                 // Return the last non-special-min-difficulty-rules-block
                 auto pindex = pindexLastPow;
-                while (pindex->pprev != nullptr && pindex->nHeight % params.DifficultyAdjustmentInterval() != 0 && pindex->GetBlockHeader().nBits == UintToArith256(params.powLimit).GetCompact())
+                while (pindex->pprev != nullptr && pindex->nHeight % params.DifficultyAdjustmentInterval(pindexLastPow->nHeight) != 0 && pindex->GetBlockHeader().nBits == UintToArith256(params.powLimit).GetCompact())
                     pindex = pindex->pprev;
                 return pindex->GetBlockHeader().nBits;
             }
@@ -238,13 +245,13 @@ unsigned int GetNextPowTargetRequired(const CBlockIndex* pindexLastPow, const Co
     }
 
     // We'll also not adjust the difficulty, if the ratchet wasn't active at least 2x difficultyAdjustmentInterval + 4 blocks.
-    auto start = (params.RatchetHeight + 2 * params.DifficultyAdjustmentInterval() + 4);
+    auto start = (params.RatchetHeight + 2 * params.DifficultyAdjustmentInterval(pindexLastPow->nHeight) + 4);
     if (pindexLastPow->nHeight < start)
         return pindexLastPow->GetBlockHeader().nBits;
 
     // Define the amount of PoW blocks used to calculate the average, and for the sake of logic,
     // don't repeat Bitcoin's off-by one error.
-    const auto amount_of_pow_blocks = params.DifficultyAdjustmentInterval();
+    const auto amount_of_pow_blocks = params.DifficultyAdjustmentInterval(pindexLastPow->nHeight);
 
     auto powBlockIterator = pindexLastPow;
     auto pow_block_count = 0;

@@ -439,7 +439,7 @@
         <translation>コマンドラインオプション(&amp;C)</translation>
     </message>
     <message numerus="yes">
-        <source>%n active connection(s) to Bitcoin network</source>
+        <source>%n active connection(s) to X1 network</source>
         <translation><numerusform>Bitcoin ネットワークへのアクティブな接続は %n 個</numerusform></translation>
     </message>
     <message>
@@ -1240,7 +1240,7 @@
         <translation>外部からの接続を許可する(&amp;G)</translation>
     </message>
     <message>
-        <source>Connect to the Bitcoin network through a SOCKS5 proxy.</source>
+        <source>Connect to the X1 network through a SOCKS5 proxy.</source>
         <translation>SOCKS5 プロキシ経由で Bitcoin ネットワークに接続する。</translation>
     </message>
     <message>
@@ -1276,7 +1276,7 @@
         <translation>Tor</translation>
     </message>
     <message>
-        <source>Connect to the Bitcoin network through a separate SOCKS5 proxy for Tor hidden services.</source>
+        <source>Connect to the X1 network through a separate SOCKS5 proxy for Tor hidden services.</source>
         <translation>Tor秘匿サービスを利用するため、専用の SOCKS5 プロキシ経由で Bitcoin ネットワークに接続する。</translation>
     </message>
     <message>
@@ -1387,7 +1387,7 @@
         <translation>フォーム</translation>
     </message>
     <message>
-        <source>The displayed information may be out of date. Your wallet automatically synchronizes with the Bitcoin network after a connection is established, but this process has not completed yet.</source>
+        <source>The displayed information may be out of date. Your wallet automatically synchronizes with the X1 network after a connection is established, but this process has not completed yet.</source>
         <translation>表示されている情報は古い可能性があります。ウォレットは接続確立後に Bitcoin ネットワークと自動的に同期しますが、同期処理はまだ完了していません。</translation>
     </message>
     <message>
@@ -2001,7 +2001,7 @@
         <translation>メッセージ (&amp;M):</translation>
     </message>
     <message>
-        <source>An optional message to attach to the payment request, which will be displayed when the request is opened. Note: The message will not be sent with the payment over the Bitcoin network.</source>
+        <source>An optional message to attach to the payment request, which will be displayed when the request is opened. Note: The message will not be sent with the payment over the X1 network.</source>
         <translation>支払いリクエストに添付するメッセージ（任意）。支払リクエスト開始時に表示されます。注意: メッセージは Bitcoin ネットワーク上へ送信されません。</translation>
     </message>
     <message>
@@ -2561,7 +2561,7 @@ Note:  Since the fee is calculated on a per-byte basis, a fee of "100 satoshis p
         <translation>このアドレスに対するラベルを入力することで、送金したことがあるアドレスの一覧に追加することができます</translation>
     </message>
     <message>
-        <source>A message that was attached to the bitcoin: URI which will be stored with the transaction for your reference. Note: This message will not be sent over the Bitcoin network.</source>
+        <source>A message that was attached to the bitcoin: URI which will be stored with the transaction for your reference. Note: This message will not be sent over the X1 network.</source>
         <translation>bitcoin: URIに添付されていたメッセージです。これは参照用として取引とともに保存されます。注意: メッセージは Bitcoin ネットワーク上へ送信されません。</translation>
     </message>
     <message>

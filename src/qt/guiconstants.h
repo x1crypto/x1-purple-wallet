@@ -42,12 +42,12 @@ static const int TOOLTIP_WRAP_THRESHOLD = 80;
 /* Number of frames in spinner animation */
 #define SPINNER_FRAMES 36
 
-#define QAPP_ORG_NAME "XDS"
-#define QAPP_ORG_DOMAIN "xds.network"
-#define QAPP_APP_NAME_DEFAULT "XDS-Purple-Wallet"
-#define QAPP_APP_NAME_TESTNET "XDS-Purple-Wallet-testnet"
-#define QAPP_APP_NAME_SIGNET "XDS-Purple-Wallet-signet"
-#define QAPP_APP_NAME_REGTEST "XDS-Purple-Wallet-regtest"
+#define QAPP_ORG_NAME "x1crypto"
+#define QAPP_ORG_DOMAIN "x1crypto.com"
+#define QAPP_APP_NAME_DEFAULT "X1-Purple-Wallet"
+#define QAPP_APP_NAME_TESTNET "X1-Purple-Wallet-testnet"
+#define QAPP_APP_NAME_SIGNET "X1-Purple-Wallet-signet"
+#define QAPP_APP_NAME_REGTEST "X1-Purple-Wallet-regtest"
 
 /* One gigabyte (GB) in bytes */
 static constexpr uint64_t GB_BYTES{1000000000};

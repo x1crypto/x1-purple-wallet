@@ -45,9 +45,9 @@ const CBaseChainParams& BaseParams()
 std::unique_ptr<CBaseChainParams> CreateBaseChainParams(const std::string& chain)
 {
     if (chain == CBaseChainParams::MAIN) {
-        return MakeUnique<CBaseChainParams>("", 48333, 48333 + 0 + 2); // 2 as offset for Tor
+        return MakeUnique<CBaseChainParams>("", 43333, 43333 + 0 + 2); // 2 as offset for Tor
     } else if (chain == CBaseChainParams::TESTNET) {
-        return MakeUnique<CBaseChainParams>("testnet1", 48333 + 1, 48333 + 1 + 2); // 1 as offset to main, 2 as offset for Tor
+        return MakeUnique<CBaseChainParams>("testnet1", 43333 + 1, 43333 + 1 + 2); // 1 as offset to main, 2 as offset for Tor
     } else if (chain == CBaseChainParams::SIGNET) {
         return MakeUnique<CBaseChainParams>("signet", 38332, 38334);
     } else if (chain == CBaseChainParams::REGTEST) {

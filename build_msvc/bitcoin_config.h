@@ -27,13 +27,13 @@
 #define COPYRIGHT_HOLDERS "The %s developers"
 
 /* Copyright holder(s) */
-#define COPYRIGHT_HOLDERS_FINAL "The XDS developers"
+#define COPYRIGHT_HOLDERS_FINAL "The X1 developers"
 
 /* Replacement for %s in copyright holders string */
-#define COPYRIGHT_HOLDERS_SUBSTITUTION "XDS"
+#define COPYRIGHT_HOLDERS_SUBSTITUTION "X1"
 
 /* Copyright year */
-#define COPYRIGHT_YEAR 2019
+#define COPYRIGHT_YEAR 2021
 
 /* Define to 1 to enable wallet functions */
 #define ENABLE_WALLET 1
@@ -250,19 +250,19 @@
 #define PACKAGE_BUGREPORT "https://github.com/bitcoin/bitcoin/issues"
 
 /* Define to the full name of this package. */
-#define PACKAGE_NAME "XDS Qt"
+#define PACKAGE_NAME "X1 Purple Wallet"
 
 /* Define to the full name and version of this package. */
-#define PACKAGE_STRING "XDS Qt 0.19.99"
+#define PACKAGE_STRING "X1 Purple Wallet 0.20.99"
 
 /* Define to the one symbol short name of this package. */
-#define PACKAGE_TARNAME "bitcoin"
+#define PACKAGE_TARNAME "x1-purple-wallet"
 
 /* Define to the home page for this package. */
-#define PACKAGE_URL "https://bitcoincore.org/"
+#define PACKAGE_URL "http://x1crypto.com/"
 
 /* Define to the version of this package. */
-#define PACKAGE_VERSION "0.19.99"
+#define PACKAGE_VERSION "0.20.99"
 
 /* Define to necessary symbol if this constant uses a non-standard name on
    your system. */

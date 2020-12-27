@@ -77,7 +77,7 @@ struct Params {
     bool fPowPosNoRetargeting;
     int64_t nPowTargetSpacing;
     int64_t nPowTargetTimespan;
-    int64_t DifficultyAdjustmentInterval() const { return nPowTargetTimespan / nPowTargetSpacing; }
+    int64_t DifficultyAdjustmentInterval(int64_t height) const { return GetnPowTargetTimespan(height) / GetnPowTargetSpacing(height); }
     /** The best chain should have at least this much work */
     uint256 nMinimumChainWork;
     /** By default assume that the signatures in ancestors of this block are valid */
@@ -93,6 +93,9 @@ struct Params {
 
     /** Block height at which XDS PoS/PoW Ratchet becomes active */
     int RatchetHeight;
+
+	/** Block height at which X1 switches to a 600 seconds nPowTargetSpacing */
+    int TenMinutesSpacingHeight;
 
     int PremineHeight;
 
@@ -115,6 +118,22 @@ struct Params {
             return true;
 
         return false;
+    }
+
+    int64_t GetnPowTargetTimespan(int64_t height) const
+    {
+        return GetnPowTargetSpacing(height) * 338;
+    }
+	
+    int64_t GetnPowTargetSpacing(int64_t height) const
+    {
+        if (TenMinutesSpacingHeight == 0)
+            return nPowTargetSpacing; // 256
+
+    	if (height < TenMinutesSpacingHeight)
+            return nPowTargetSpacing; // 256
+
+    	return 600;
     }
 };
 } // namespace Consensus
