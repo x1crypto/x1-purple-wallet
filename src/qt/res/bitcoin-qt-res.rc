@@ -19,13 +19,13 @@ BEGIN
     BEGIN
         BLOCK "040904E4" // U.S. English - multilingual (hex)
         BEGIN
-            VALUE "CompanyName",        "XDS Purple Productions"
-            VALUE "FileDescription",    PACKAGE_NAME " (GUI node for XDS)"
+            VALUE "CompanyName",        "The X1 Developers"
+            VALUE "FileDescription",    PACKAGE_NAME " (GUI node for X1)"
             VALUE "FileVersion",        VER_FILEVERSION_STR
-            VALUE "InternalName",       "xds-purple-wallet"
+            VALUE "InternalName",       "x1-purple-wallet"
             VALUE "LegalCopyright",     COPYRIGHT_STR
             VALUE "LegalTrademarks1",   "Distributed under the MIT software license, see the accompanying file COPYING or http://www.opensource.org/licenses/mit-license.php."
-            VALUE "OriginalFilename",   "xds-purple-wallet.exe"
+            VALUE "OriginalFilename",   "x1-purple-wallet.exe"
             VALUE "ProductName",        PACKAGE_NAME
             VALUE "ProductVersion",     VER_PRODUCTVERSION_STR
         END

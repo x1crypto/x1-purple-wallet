@@ -12,7 +12,7 @@
  * for both bitcoind and bitcoin-qt, to make it harder for attackers to
  * target servers or GUI users specifically.
  */
-const std::string CLIENT_NAME("XDS Satoshi");
+const std::string CLIENT_NAME("X1-Purple");
 
 
 #ifdef HAVE_BUILD_INFO

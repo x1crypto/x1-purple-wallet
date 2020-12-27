@@ -3525,7 +3525,7 @@ static bool ContextualCheckBlockHeader(const CBlockHeader& block, BlockValidatio
     // Check proof of work
     const Consensus::Params& consensusParams = params.GetConsensus();
 
-    // Check Ratchet sequence
+    // todo: Check Ratchet sequence 
     //if (!consensusParams.IsAlgorithmAllowed(is_proof_of_stake, nHeight)) {
     //    const auto requiredAlgorithm = is_proof_of_stake ? "Proof-of_Stake" : "Proof-of-Work";
     //    LogPrintf("ERROR: %s: %s required at this height (height %d)\n", __func__, requiredAlgorithm, nHeight);
