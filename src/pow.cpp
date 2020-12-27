@@ -238,7 +238,8 @@ unsigned int GetNextPowTargetRequired(const CBlockIndex* pindexLastPow, const Co
     }
 
     // We'll also not adjust the difficulty, if the ratchet wasn't active at least 2x difficultyAdjustmentInterval + 4 blocks.
-    if (pindexLastPow->nHeight < params.RatchetHeight + 2 * params.DifficultyAdjustmentInterval() + 4)
+    auto start = (params.RatchetHeight + 2 * params.DifficultyAdjustmentInterval() + 4);
+    if (pindexLastPow->nHeight < start)
         return pindexLastPow->GetBlockHeader().nBits;
 
     // Define the amount of PoW blocks used to calculate the average, and for the sake of logic,

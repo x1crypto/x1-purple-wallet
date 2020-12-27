@@ -103,7 +103,7 @@ public:
         consensus.MinBIP9WarningHeight = 0;
         consensus.powLimit = uint256S("00000fffffffffffffffffffffffffffffffffffffffffffffffffffffffffff");
         consensus.posLimit = uint256S("000000000000ffffffffffffffffffffffffffffffffffffffffffffffffffff");
-        consensus.nPowTargetTimespan = 256;
+        consensus.nPowTargetTimespan = 256 * 338; // ~ 1 day;
         consensus.nPowTargetSpacing = 256;
         consensus.fPowAllowMinDifficultyBlocks = false;
         consensus.fPowPosNoRetargeting = false;

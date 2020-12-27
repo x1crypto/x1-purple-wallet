@@ -3526,11 +3526,11 @@ static bool ContextualCheckBlockHeader(const CBlockHeader& block, BlockValidatio
     const Consensus::Params& consensusParams = params.GetConsensus();
 
     // Check Ratchet sequence
-    if (!consensusParams.IsAlgorithmAllowed(is_proof_of_stake, nHeight)) {
-        const auto requiredAlgorithm = is_proof_of_stake ? "Proof-of_Stake" : "Proof-of-Work";
-        LogPrintf("ERROR: %s: %s required at this height (height %d)\n", __func__, requiredAlgorithm, nHeight);
-        return state.Invalid(BlockValidationResult::BLOCK_INVALID_HEADER, "bad-ratchet-sequence", "ratchet error");
-    }
+    //if (!consensusParams.IsAlgorithmAllowed(is_proof_of_stake, nHeight)) {
+    //    const auto requiredAlgorithm = is_proof_of_stake ? "Proof-of_Stake" : "Proof-of-Work";
+    //    LogPrintf("ERROR: %s: %s required at this height (height %d)\n", __func__, requiredAlgorithm, nHeight);
+    //    return state.Invalid(BlockValidationResult::BLOCK_INVALID_HEADER, "bad-ratchet-sequence", "ratchet error");
+    //}
 
 
     bool isTestBlock = false;
@@ -3699,7 +3699,7 @@ bool BlockManager::AcceptBlockHeader(const CBlockHeader& block, BlockValidationS
             LogPrintf("ERROR: %s: prev block invalid (validation.cpp, l. 3641)\n", __func__);
             return state.Invalid(BlockValidationResult::BLOCK_INVALID_PREV, "bad-prevblk");
         }
-        if (!ContextualCheckBlockHeader(block, state, chainparams, pindexPrev, GetAdjustedTime(), false))
+        if (!ContextualCheckBlockHeader(block, state, chainparams, pindexPrev, GetAdjustedTime(), pindexPrev->nHeight % 2 ==0))
             return error("%s: Consensus::ContextualCheckBlockHeader: %s, %s", __func__, hash.ToString(), state.ToString());
 
         /* Determine if this block descends from any block which has been found
