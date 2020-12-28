@@ -55,7 +55,7 @@ static UniValue GetNetworkHashPS(int lookup, int height) {
 
     // If lookup is -1, then use blocks since last difficulty change.
     if (lookup <= 0)
-        lookup = pb->nHeight % Params().GetConsensus().DifficultyAdjustmentInterval() + 1;
+        lookup = pb->nHeight % Params().GetConsensus().DifficultyAdjustmentInterval(height) + 1;
 
     // If lookup is larger than chain, then set it to chain length.
     if (lookup > pb->nHeight)
@@ -898,6 +898,18 @@ static RPCHelpMan getblocktemplate()
         result.pushKV("default_witness_commitment", HexStr(pblocktemplate->vchCoinbaseCommitment));
     }
 
+    result.pushKV("stakemodifierv2", pindexPrev->stakeModifierV2.GetHex());
+
+    uint32_t posBits = GetNextTargetRequired(ChainActive().Tip(), nullptr, true, consensusParams);
+    result.pushKV("posbits", strprintf("%08x", posBits));
+
+    arith_uint256 posTarget = arith_uint256().SetCompact(posBits);
+    result.pushKV("postarget", posTarget.GetHex());
+
+    result.pushKV("previousblockconsensus", pindexPrev->IsProofOfStake() ? "pos" : "pow");
+
+    result.pushKV("previousblocktime", (int64_t)pindexPrev->GetBlockTime());
+   
     return result;
 },
     };

@@ -6,13 +6,12 @@
 #ifndef BITCOIN_CONSENSUS_PARAMS_H
 #define BITCOIN_CONSENSUS_PARAMS_H
 
-#include <uint256.h>
 #include <limits>
+#include <uint256.h>
 
 namespace Consensus {
 
-enum DeploymentPos
-{
+enum DeploymentPos {
     DEPLOYMENT_TESTDUMMY,
     DEPLOYMENT_TAPROOT, // Deployment of Schnorr/Taproot (BIPs 340-342)
     // NOTE: Also add new deployments to VersionBitsDeploymentInfo in versionbits.cpp
@@ -75,21 +74,67 @@ struct Params {
     /** Proof of work parameters */
     uint256 powLimit;
     bool fPowAllowMinDifficultyBlocks;
-    bool fPowNoRetargeting;
+    bool fPowPosNoRetargeting;
     int64_t nPowTargetSpacing;
     int64_t nPowTargetTimespan;
-    int64_t DifficultyAdjustmentInterval() const { return nPowTargetTimespan / nPowTargetSpacing; }
+    int64_t DifficultyAdjustmentInterval(int64_t height) const { return GetnPowTargetTimespan(height) / GetnPowTargetSpacing(height); }
     /** The best chain should have at least this much work */
     uint256 nMinimumChainWork;
     /** By default assume that the signatures in ancestors of this block are valid */
     uint256 defaultAssumeValid;
-
+    /** Proof of stake parameters */
+    uint256 posLimit;
     /**
      * If true, witness commitments contain a payload equal to a Bitcoin Script solution
      * to the signet challenge. See BIP325.
      */
     bool signet_blocks{false};
     std::vector<uint8_t> signet_challenge;
+
+    /** Block height at which XDS PoS/PoW Ratchet becomes active */
+    int RatchetHeight;
+
+	/** Block height at which X1 switches to a 600 seconds nPowTargetSpacing */
+    int TenMinutesSpacingHeight;
+
+    int PremineHeight;
+
+    uint64_t PremineReward;
+
+    /** If the PosPowRatchet rules are active at a block height. */
+    bool IsPosPowRatchetActiveAtHeight(int nHeight) const { return nHeight >= RatchetHeight; }
+
+    bool IsAlgorithmAllowed(bool isProofOfStake, int newBlockHeight) const
+    {
+        if (newBlockHeight < RatchetHeight)
+            return true;
+
+        // for XDS, even block heights must be Proof-of-Stake
+        const bool isPosHeight = newBlockHeight % 2 == 0;
+        if (isProofOfStake && isPosHeight)
+            return true;
+
+        if (!isProofOfStake && !isPosHeight)
+            return true;
+
+        return false;
+    }
+
+    int64_t GetnPowTargetTimespan(int64_t height) const
+    {
+        return GetnPowTargetSpacing(height) * 338;
+    }
+	
+    int64_t GetnPowTargetSpacing(int64_t height) const
+    {
+        if (TenMinutesSpacingHeight == 0)
+            return nPowTargetSpacing; // 256
+
+    	if (height < TenMinutesSpacingHeight)
+            return nPowTargetSpacing; // 256
+
+    	return 600;
+    }
 };
 } // namespace Consensus
 

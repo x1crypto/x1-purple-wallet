@@ -270,9 +270,13 @@ bool CBlockTreeDB::LoadBlockIndexGuts(const Consensus::Params& consensusParams, 
                 pindexNew->nNonce         = diskindex.nNonce;
                 pindexNew->nStatus        = diskindex.nStatus;
                 pindexNew->nTx            = diskindex.nTx;
-
-                if (!CheckProofOfWork(pindexNew->GetBlockHash(), pindexNew->nBits, consensusParams))
-                    return error("%s: CheckProofOfWork failed: %s", __func__, pindexNew->ToString());
+                pindexNew->nPowPos        = diskindex.nPowPos;
+                pindexNew->stakeModifierV2 = diskindex.stakeModifierV2;
+                // todo: revisit this: pindexNew->GetBlockHash() is not the PoW hash - either we skip this step or actually do check the pow hash, with a little more work
+                 if (!CheckProofOfWork(pindexNew->GetBlockHash(), pindexNew->nBits, consensusParams)) {
+                     // do nothing
+                     // return error("%s: CheckProofOfWork failed: %s", __func__, pindexNew->ToString());
+                 }
 
                 pcursor->Next();
             } else {

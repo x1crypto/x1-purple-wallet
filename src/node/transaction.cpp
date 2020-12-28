@@ -59,7 +59,8 @@ TransactionError BroadcastTransaction(NodeContext& node, const CTransactionRef t
                 nullptr /* plTxnReplaced */, false /* bypass_limits */, /* test_accept */ true, &fee)) {
                 return HandleATMPError(state, err_string);
             } else if (fee > max_tx_fee) {
-                return TransactionError::MAX_FEE_EXCEEDED;
+                return TransactionError::OK;
+                //return TransactionError::MAX_FEE_EXCEEDED;
             }
         }
         // Try to submit the transaction to the mempool.

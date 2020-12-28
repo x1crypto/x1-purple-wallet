@@ -71,7 +71,7 @@
 // Application startup time (used for uptime calculation)
 const int64_t nStartupTime = GetTime();
 
-const char * const BITCOIN_CONF_FILENAME = "bitcoin.conf";
+const char * const BITCOIN_CONF_FILENAME = "x1.conf";
 const char * const BITCOIN_SETTINGS_FILENAME = "settings.json";
 
 ArgsManager gArgs;
@@ -655,7 +655,7 @@ fs::path GetDefaultDataDir()
     // Unix-like: ~/.bitcoin
 #ifdef WIN32
     // Windows
-    return GetSpecialFolderPath(CSIDL_APPDATA) / "Bitcoin";
+    return GetSpecialFolderPath(CSIDL_APPDATA) / "X1-Purple-Wallet";
 #else
     fs::path pathRet;
     char* pszHome = getenv("HOME");
@@ -664,11 +664,11 @@ fs::path GetDefaultDataDir()
     else
         pathRet = fs::path(pszHome);
 #ifdef MAC_OSX
-    // macOS
-    return pathRet / "Library/Application Support/Bitcoin";
+    // Mac
+    return pathRet / "Library/Application Support/X1-Purple-Wallet";
 #else
-    // Unix-like
-    return pathRet / ".bitcoin";
+    // Unix
+    return pathRet / ".x1-purple-wallet";
 #endif
 #endif
 }
@@ -1287,6 +1287,10 @@ std::string CopyrightHolders(const std::string& strPrefix)
     // Make sure Bitcoin Core copyright is not removed by accident
     if (copyright_devs.find("Bitcoin Core") == std::string::npos) {
         strCopyrightHolders += "\n" + strPrefix + "The Bitcoin Core developers";
+    }
+    // Make sure X1 copyright is not removed by accident
+    if (copyright_devs.find("X1 Purple Wallet") == std::string::npos) {
+        strCopyrightHolders += "\n" + strPrefix + "The X1 Developers";
     }
     return strCopyrightHolders;
 }

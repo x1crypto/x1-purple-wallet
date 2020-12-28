@@ -154,6 +154,9 @@ int64_t GetBlockProofEquivalentTime(const CBlockIndex& to, const CBlockIndex& fr
 /** Find the last common ancestor two blocks have.
  *  Both pa and pb must be non-nullptr. */
 const CBlockIndex* LastCommonAncestor(const CBlockIndex* pa, const CBlockIndex* pb) {
+    assert(pa != nullptr); // xds extra check
+    assert(pb != nullptr); // xds extra check
+
     if (pa->nHeight > pb->nHeight) {
         pa = pa->GetAncestor(pb->nHeight);
     } else if (pb->nHeight > pa->nHeight) {
@@ -167,5 +170,6 @@ const CBlockIndex* LastCommonAncestor(const CBlockIndex* pa, const CBlockIndex* 
 
     // Eventually all chain branches meet at the genesis block.
     assert(pa == pb);
+    assert(pa != nullptr); // xds extra check
     return pa;
 }

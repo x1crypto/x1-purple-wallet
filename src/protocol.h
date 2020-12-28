@@ -260,6 +260,18 @@ extern const char* CFCHECKPT;
  * @since protocol version 70016 as described by BIP 339.
  */
 extern const char* WTXIDRELAY;
+/**
+ * The getprovhdr message requests a proven headers message that provides proven block
+ * headers starting from a particular point in the block chain.
+ * @since protocol version 70012. This is a proof-of-stake protocol extension.
+ */
+extern const char* GETPROVHDR;
+/**
+ * The provhdr message sends one or more block proven headers to a node which
+ * previously requested certain proven headers with a getprovhdr message.
+ * @since protocol version 70012. This is a proof-of-stake protocol extension.
+ */
+extern const char* PROVHDR;
 }; // namespace NetMsgType
 
 /* Get a vector of all valid message types (see above) */

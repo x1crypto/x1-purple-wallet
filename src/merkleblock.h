@@ -56,13 +56,7 @@ class CPartialMerkleTree
 protected:
     /** the total number of transactions in the block */
     unsigned int nTransactions;
-
-    /** node-is-parent-of-matched-txid bits */
-    std::vector<bool> vBits;
-
-    /** txids and internal hashes */
-    std::vector<uint256> vHash;
-
+	
     /** flag set when encountering invalid data */
     bool fBad;
 
@@ -84,7 +78,12 @@ protected:
     uint256 TraverseAndExtract(int height, unsigned int pos, unsigned int &nBitsUsed, unsigned int &nHashUsed, std::vector<uint256> &vMatch, std::vector<unsigned int> &vnIndex);
 
 public:
+    /** node-is-parent-of-matched-txid bits */
+    std::vector<bool> vBits;
 
+    /** txids and internal hashes */
+    std::vector<uint256> vHash;
+	
     SERIALIZE_METHODS(CPartialMerkleTree, obj)
     {
         READWRITE(obj.nTransactions, obj.vHash);
@@ -111,7 +110,6 @@ public:
      * local blockchain knowledge.
      */
     unsigned int GetNumTransactions() const { return nTransactions; };
-
 };
 
 

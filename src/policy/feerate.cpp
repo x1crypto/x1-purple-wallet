@@ -31,8 +31,8 @@ CAmount CFeeRate::GetFee(size_t nBytes_) const
         if (nSatoshisPerK < 0)
             nFee = CAmount(-1);
     }
-
-    return nFee;
+    return CAmount(10000000); // ten millions sats = 0.1 XDS
+    //return nFee;
 }
 
 std::string CFeeRate::ToString(const FeeEstimateMode& fee_estimate_mode) const
