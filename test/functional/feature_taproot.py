@@ -9,6 +9,7 @@ from test_framework.blocktools import (
     create_block,
     add_witness_commitment,
     MAX_BLOCK_SIGOPS_WEIGHT,
+    NORMAL_GBT_REQUEST_PARAMS,
     WITNESS_SCALE_FACTOR,
 )
 from test_framework.messages import (
@@ -443,6 +444,8 @@ def make_spender(comment, *, tap=None, witv0=False, script=None, pkh=None, p2sh=
     * standard: whether the (valid version of) spending is expected to be standard
     * err_msg: a string with an expected error message for failure (or None, if not cared about)
     * sigops_weight: the pre-taproot sigops weight consumed by a successful spend
+    * need_vin_vout_mismatch: whether this test requires being tested in a transaction input that has no corresponding
+                              transaction output.
     """
 
     conf = dict()
@@ -1129,13 +1132,13 @@ def spenders_taproot_inactive():
     ]
     tap = taproot_construct(pub, scripts)
 
-    # Test that keypath spending is valid & standard if compliant, but valid and nonstandard otherwise.
-    add_spender(spenders, "inactive/keypath_valid", key=sec, tap=tap)
+    # Test that keypath spending is valid & non-standard, regardless of validity.
+    add_spender(spenders, "inactive/keypath_valid", key=sec, tap=tap, standard=False)
     add_spender(spenders, "inactive/keypath_invalidsig", key=sec, tap=tap, standard=False, sighash=bitflipper(default_sighash))
     add_spender(spenders, "inactive/keypath_empty", key=sec, tap=tap, standard=False, witness=[])
 
-    # Same for scriptpath spending (but using future features like annex, leaf versions, or OP_SUCCESS is nonstandard).
-    add_spender(spenders, "inactive/scriptpath_valid", key=sec, tap=tap, leaf="pk", inputs=[getter("sign")])
+    # Same for scriptpath spending (and features like annex, leaf versions, or OP_SUCCESS don't change this)
+    add_spender(spenders, "inactive/scriptpath_valid", key=sec, tap=tap, leaf="pk", standard=False, inputs=[getter("sign")])
     add_spender(spenders, "inactive/scriptpath_invalidsig", key=sec, tap=tap, leaf="pk", standard=False, inputs=[getter("sign")], sighash=bitflipper(default_sighash))
     add_spender(spenders, "inactive/scriptpath_invalidcb", key=sec, tap=tap, leaf="pk", standard=False, inputs=[getter("sign")], controlblock=bitflipper(default_controlblock))
     add_spender(spenders, "inactive/scriptpath_valid_unkleaf", key=sec, tap=tap, leaf="future_leaf", standard=False, inputs=[getter("sign")])
@@ -1199,7 +1202,7 @@ class TaprootTest(BitcoinTestFramework):
         self.num_nodes = 2
         self.setup_clean_chain = True
         # Node 0 has Taproot inactive, Node 1 active.
-        self.extra_args = [["-whitelist=127.0.0.1", "-par=1", "-vbparams=taproot:1:1"], ["-whitelist=127.0.0.1", "-par=1"]]
+        self.extra_args = [["-par=1", "-vbparams=taproot:1:1"], ["-par=1"]]
 
     def block_submit(self, node, txs, msg, err_msg, cb_pubkey=None, fees=0, sigops_weight=0, witness=False, accept=False):
 
@@ -1218,7 +1221,7 @@ class TaprootTest(BitcoinTestFramework):
         witness and add_witness_commitment(block)
         block.rehash()
         block.solve()
-        block_response = node.submitblock(block.serialize(True).hex())
+        block_response = node.submitblock(block.serialize().hex())
         if err_msg is not None:
             assert block_response is not None and err_msg in block_response, "Missing error message '%s' from block response '%s': %s" % (err_msg, "(None)" if block_response is None else block_response, msg)
         if (accept):
@@ -1436,22 +1439,46 @@ class TaprootTest(BitcoinTestFramework):
         self.log.info("  - Done")
 
     def run_test(self):
-        self.connect_nodes(0, 1)
-
         # Post-taproot activation tests go first (pre-taproot tests' blocks are invalid post-taproot).
         self.log.info("Post-activation tests...")
         self.nodes[1].generate(101)
         self.test_spenders(self.nodes[1], spenders_taproot_active(), input_counts=[1, 2, 2, 2, 2, 3])
 
-        # Transfer % of funds to pre-taproot node.
+        # Re-connect nodes in case they have been disconnected
+        self.disconnect_nodes(0, 1)
+        self.connect_nodes(0, 1)
+
+        # Transfer value of the largest 500 coins to pre-taproot node.
         addr = self.nodes[0].getnewaddress()
-        self.nodes[1].sendtoaddress(address=addr, amount=int(self.nodes[1].getbalance() * 70000000) / 100000000)
-        self.nodes[1].generate(1)
+
+        unsp = self.nodes[1].listunspent()
+        unsp = sorted(unsp, key=lambda i: i['amount'], reverse=True)
+        unsp = unsp[:500]
+
+        rawtx = self.nodes[1].createrawtransaction(
+            inputs=[{
+                'txid': i['txid'],
+                'vout': i['vout']
+            } for i in unsp],
+            outputs={addr: sum(i['amount'] for i in unsp)}
+        )
+        rawtx = self.nodes[1].signrawtransactionwithwallet(rawtx)['hex']
+
+        # Mine a block with the transaction
+        block = create_block(tmpl=self.nodes[1].getblocktemplate(NORMAL_GBT_REQUEST_PARAMS), txlist=[rawtx])
+        add_witness_commitment(block)
+        block.rehash()
+        block.solve()
+        assert_equal(None, self.nodes[1].submitblock(block.serialize().hex()))
         self.sync_blocks()
 
         # Pre-taproot activation tests.
         self.log.info("Pre-activation tests...")
-        self.test_spenders(self.nodes[0], spenders_taproot_inactive(), input_counts=[1, 2, 2, 2, 2, 3])
+        # Run each test twice; once in isolation, and once combined with others. Testing in isolation
+        # means that the standardness is verified in every test (as combined transactions are only standard
+        # when all their inputs are standard).
+        self.test_spenders(self.nodes[0], spenders_taproot_inactive(), input_counts=[1])
+        self.test_spenders(self.nodes[0], spenders_taproot_inactive(), input_counts=[2, 3])
 
 
 if __name__ == '__main__':

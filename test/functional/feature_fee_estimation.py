@@ -13,7 +13,7 @@ from test_framework.util import (
     assert_equal,
     assert_greater_than,
     assert_greater_than_or_equal,
-    connect_nodes,
+    assert_raises_rpc_error,
     satoshi_round,
 )
 
@@ -232,9 +232,9 @@ class EstimateFeeTest(BitcoinTestFramework):
         # so the estimates would not be affected by the splitting transactions
         self.start_node(1)
         self.start_node(2)
-        connect_nodes(self.nodes[1], 0)
-        connect_nodes(self.nodes[0], 2)
-        connect_nodes(self.nodes[2], 1)
+        self.connect_nodes(1, 0)
+        self.connect_nodes(0, 2)
+        self.connect_nodes(2, 1)
 
         self.sync_all()
 
@@ -262,6 +262,11 @@ class EstimateFeeTest(BitcoinTestFramework):
         self.sync_blocks(self.nodes[0:3], wait=.1)
         self.log.info("Final estimates after emptying mempools")
         check_estimates(self.nodes[1], self.fees_per_kb)
+
+        self.log.info("Testing that fee estimation is disabled in blocksonly.")
+        self.restart_node(0, ["-blocksonly"])
+        assert_raises_rpc_error(-32603, "Fee estimation disabled",
+                                self.nodes[0].estimatesmartfee, 2)
 
 
 if __name__ == '__main__':

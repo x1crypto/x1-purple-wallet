@@ -105,6 +105,7 @@ public:
     void IncrementUpdateCounter() override { ++nUpdateCounter; }
 
     std::string Filename() override { return m_file_path; }
+    std::string Format() override { return "sqlite"; }
 
     /** Make a SQLiteBatch connected to this database */
     std::unique_ptr<DatabaseBatch> MakeBatch(bool flush_on_close = true) override;
@@ -112,10 +113,8 @@ public:
     sqlite3* m_db{nullptr};
 };
 
-bool ExistsSQLiteDatabase(const fs::path& path);
 std::unique_ptr<SQLiteDatabase> MakeSQLiteDatabase(const fs::path& path, const DatabaseOptions& options, DatabaseStatus& status, bilingual_str& error);
 
 std::string SQLiteDatabaseVersion();
-bool IsSQLiteFile(const fs::path& path);
 
 #endif // BITCOIN_WALLET_SQLITE_H

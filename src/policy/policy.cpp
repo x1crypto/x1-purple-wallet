@@ -75,7 +75,7 @@ bool IsStandard(const CScript& scriptPubKey, TxoutType& whichType)
 
 bool IsStandardTx(const CTransaction& tx, bool permit_bare_multisig, const CFeeRate& dust_relay_fee, std::string& reason)
 {
-    if (tx.nVersion > CTransaction::MAX_STANDARD_VERSION || tx.nVersion < 1) {
+    if (tx.nVersion > TX_MAX_STANDARD_VERSION || tx.nVersion < 1) {
         reason = "version";
         return false;
     }
@@ -92,14 +92,15 @@ bool IsStandardTx(const CTransaction& tx, bool permit_bare_multisig, const CFeeR
 
     for (const CTxIn& txin : tx.vin)
     {
-        // Biggest 'standard' txin is a 15-of-15 P2SH multisig with compressed
-        // keys (remember the 520 byte limit on redeemScript size). That works
-        // out to a (15*(33+1))+3=513 byte redeemScript, 513+1+15*(73+1)+3=1627
-        // bytes of scriptSig, which we round off to 1650 bytes for some minor
-        // future-proofing. That's also enough to spend a 20-of-20
-        // CHECKMULTISIG scriptPubKey, though such a scriptPubKey is not
-        // considered standard.
-        if (txin.scriptSig.size() > 1650) {
+        // Biggest 'standard' txin involving only keys is a 15-of-15 P2SH
+        // multisig with compressed keys (remember the 520 byte limit on
+        // redeemScript size). That works out to a (15*(33+1))+3=513 byte
+        // redeemScript, 513+1+15*(73+1)+3=1627 bytes of scriptSig, which
+        // we round off to 1650(MAX_STANDARD_SCRIPTSIG_SIZE) bytes for
+        // some minor future-proofing. That's also enough to spend a
+        // 20-of-20 CHECKMULTISIG scriptPubKey, though such a scriptPubKey
+        // is not considered standard.
+        if (txin.scriptSig.size() > MAX_STANDARD_SCRIPTSIG_SIZE) {
             reason = "scriptsig-size";
             return false;
         }
@@ -155,7 +156,7 @@ bool IsStandardTx(const CTransaction& tx, bool permit_bare_multisig, const CFeeR
  *
  * Note that only the non-witness portion of the transaction is checked here.
  */
-bool AreInputsStandard(const CTransaction& tx, const CCoinsViewCache& mapInputs)
+bool AreInputsStandard(const CTransaction& tx, const CCoinsViewCache& mapInputs, bool taproot_active)
 {
     if (tx.IsCoinBase())
         return true; // Coinbases don't use vin normally
@@ -183,6 +184,9 @@ bool AreInputsStandard(const CTransaction& tx, const CCoinsViewCache& mapInputs)
             if (subscript.GetSigOpCount(true) > MAX_P2SH_SIGOPS) {
                 return false;
             }
+        } else if (whichType == TxoutType::WITNESS_V1_TAPROOT) {
+            // Don't allow Taproot spends unless Taproot is active.
+            if (!taproot_active) return false;
         }
     }
 

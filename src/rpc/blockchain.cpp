@@ -17,6 +17,7 @@
 #include <node/coinstats.h>
 #include <node/context.h>
 #include <node/utxo_snapshot.h>
+#include <policy/fees.h>
 #include <policy/feerate.h>
 #include <policy/policy.h>
 #include <policy/rbf.h>
@@ -79,6 +80,15 @@ ChainstateManager& EnsureChainman(const util::Ref& context)
         throw JSONRPCError(RPC_INTERNAL_ERROR, "Node chainman not found");
     }
     return *node.chainman;
+}
+
+CBlockPolicyEstimator& EnsureFeeEstimator(const util::Ref& context)
+{
+    NodeContext& node = EnsureNodeContext(context);
+    if (!node.fee_estimator) {
+        throw JSONRPCError(RPC_INTERNAL_ERROR, "Fee estimation disabled");
+    }
+    return *node.fee_estimator;
 }
 
 /* Calculate the difficulty for a given block index.
@@ -162,16 +172,21 @@ UniValue blockToJSON(const CBlock& block, const CBlockIndex* tip, const CBlockIn
     result.pushKV("versionHex", strprintf("%08x", block.nVersion));
     result.pushKV("merkleroot", block.hashMerkleRoot.GetHex());
     UniValue txs(UniValue::VARR);
-    for(const auto& tx : block.vtx)
-    {
-        if(txDetails)
-        {
+    if (txDetails) {
+        CBlockUndo blockUndo;
+        const bool have_undo = !IsBlockPruned(blockindex) && UndoReadFromDisk(blockUndo, blockindex);
+        for (size_t i = 0; i < block.vtx.size(); ++i) {
+            const CTransactionRef& tx = block.vtx.at(i);
+            // coinbase transaction (i == 0) doesn't have undo data
+            const CTxUndo* txundo = (have_undo && i) ? &blockUndo.vtxundo.at(i - 1) : nullptr;
             UniValue objTx(UniValue::VOBJ);
-            TxToUniv(*tx, uint256(), objTx, true, RPCSerializationFlags());
+            TxToUniv(*tx, uint256(), objTx, true, RPCSerializationFlags(), txundo);
             txs.push_back(objTx);
         }
-        else
+    } else {
+        for (const CTransactionRef& tx : block.vtx) {
             txs.push_back(tx->GetHash().GetHex());
+        }
     }
     result.pushKV("tx", txs);
     result.pushKV("time", block.GetBlockTime());
@@ -926,6 +941,7 @@ static RPCHelpMan getblock()
                         {RPCResult::Type::OBJ, "", "",
                         {
                             {RPCResult::Type::ELISION, "", "The transactions in the format of the getrawtransaction RPC. Different from verbosity = 1 \"tx\" result"},
+                            {RPCResult::Type::NUM, "fee", "The transaction fee in " + CURRENCY_UNIT + ", omitted if block undo data is not available"},
                         }},
                     }},
                 }},
@@ -1816,12 +1832,12 @@ static RPCHelpMan getblockstats()
                 {RPCResult::Type::NUM, "outs", "The number of outputs"},
                 {RPCResult::Type::NUM, "subsidy", "The block subsidy"},
                 {RPCResult::Type::NUM, "swtotal_size", "Total size of all segwit transactions"},
-                {RPCResult::Type::NUM, "swtotal_weight", "Total weight of all segwit transactions divided by segwit scale factor (4)"},
+                {RPCResult::Type::NUM, "swtotal_weight", "Total weight of all segwit transactions"},
                 {RPCResult::Type::NUM, "swtxs", "The number of segwit transactions"},
                 {RPCResult::Type::NUM, "time", "The block time"},
                 {RPCResult::Type::NUM, "total_out", "Total amount in all outputs (excluding coinbase and thus reward [ie subsidy + totalfee])"},
                 {RPCResult::Type::NUM, "total_size", "Total size of all non-coinbase transactions"},
-                {RPCResult::Type::NUM, "total_weight", "Total weight of all non-coinbase transactions divided by segwit scale factor (4)"},
+                {RPCResult::Type::NUM, "total_weight", "Total weight of all non-coinbase transactions"},
                 {RPCResult::Type::NUM, "totalfee", "The fee total"},
                 {RPCResult::Type::NUM, "txs", "The number of transactions (including coinbase)"},
                 {RPCResult::Type::NUM, "utxo_increase", "The increase/decrease in the number of unspent outputs"},

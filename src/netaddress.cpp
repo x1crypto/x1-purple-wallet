@@ -255,10 +255,14 @@ bool CNetAddr::SetSpecial(const std::string& str)
         Span<const uint8_t> input_checksum{input.data() + ADDR_TORV3_SIZE, torv3::CHECKSUM_LEN};
         Span<const uint8_t> input_version{input.data() + ADDR_TORV3_SIZE + torv3::CHECKSUM_LEN, sizeof(torv3::VERSION)};
 
+        if (input_version != torv3::VERSION) {
+            return false;
+        }
+
         uint8_t calculated_checksum[torv3::CHECKSUM_LEN];
         torv3::Checksum(input_pubkey, calculated_checksum);
 
-        if (input_checksum != calculated_checksum || input_version != torv3::VERSION) {
+        if (input_checksum != calculated_checksum) {
             return false;
         }
 
@@ -430,6 +434,11 @@ bool CNetAddr::IsValid() const
     // unspecified IPv6 address (::/128)
     unsigned char ipNone6[16] = {};
     if (IsIPv6() && memcmp(m_addr.data(), ipNone6, sizeof(ipNone6)) == 0) {
+        return false;
+    }
+
+    // CJDNS addresses always start with 0xfc
+    if (IsCJDNS() && (m_addr[0] != 0xFC)) {
         return false;
     }
 

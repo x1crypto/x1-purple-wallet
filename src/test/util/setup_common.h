@@ -11,6 +11,7 @@
 #include <node/context.h>
 #include <pubkey.h>
 #include <random.h>
+#include <stdexcept>
 #include <txmempool.h>
 #include <util/check.h>
 #include <util/string.h>
@@ -82,14 +83,21 @@ private:
     const fs::path m_path_root;
 };
 
-/** Testing setup that configures a complete environment.
- * Included are coins database, script check threads setup.
+/** Testing setup that performs all steps up until right before
+ * ChainstateManager gets initialized. Meant for testing ChainstateManager
+ * initialization behaviour.
  */
-struct TestingSetup : public BasicTestingSetup {
+struct ChainTestingSetup : public BasicTestingSetup {
     boost::thread_group threadGroup;
 
+    explicit ChainTestingSetup(const std::string& chainName = CBaseChainParams::MAIN, const std::vector<const char*>& extra_args = {});
+    ~ChainTestingSetup();
+};
+
+/** Testing setup that configures a complete environment.
+ */
+struct TestingSetup : public ChainTestingSetup {
     explicit TestingSetup(const std::string& chainName = CBaseChainParams::MAIN, const std::vector<const char*>& extra_args = {});
-    ~TestingSetup();
 };
 
 /** Identical to TestingSetup, but chain set to regtest */
@@ -158,13 +166,15 @@ std::ostream& operator<<(std::ostream& os, const uint256& num);
  * Use as
  * BOOST_CHECK_EXCEPTION(code that throws, exception type, HasReason("foo"));
  */
-class HasReason {
+class HasReason
+{
 public:
     explicit HasReason(const std::string& reason) : m_reason(reason) {}
-    template <typename E>
-    bool operator() (const E& e) const {
+    bool operator()(const std::exception& e) const
+    {
         return std::string(e.what()).find(m_reason) != std::string::npos;
     };
+
 private:
     const std::string m_reason;
 };

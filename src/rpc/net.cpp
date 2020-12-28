@@ -126,13 +126,15 @@ static RPCHelpMan getpeerinfo()
                             {RPCResult::Type::NUM, "version", "The peer version, such as 70001"},
                             {RPCResult::Type::STR, "subver", "The string version"},
                             {RPCResult::Type::BOOL, "inbound", "Inbound (true) or Outbound (false)"},
+                            {RPCResult::Type::BOOL, "bip152_hb_to", "Whether we selected peer as (compact blocks) high-bandwidth peer"},
+                            {RPCResult::Type::BOOL, "bip152_hb_from", "Whether peer selected us as (compact blocks) high-bandwidth peer"},
                             {RPCResult::Type::BOOL, "addnode", "Whether connection was due to addnode/-connect or if it was an automatic/inbound connection\n"
                                                                "(DEPRECATED, returned only if the config option -deprecatedrpc=getpeerinfo_addnode is passed)"},
                             {RPCResult::Type::STR, "connection_type", "Type of connection: \n" + Join(CONNECTION_TYPE_DOC, ",\n") + ".\n"
                                                                       "Please note this output is unlikely to be stable in upcoming releases as we iterate to\n"
                                                                       "best capture connection behaviors."},
-                            {RPCResult::Type::NUM, "startingheight", "The starting height (block) of the peer"},
                             {RPCResult::Type::NUM, "banscore", "The ban score (DEPRECATED, returned only if config option -deprecatedrpc=banscore is passed)"},
+                            {RPCResult::Type::NUM, "startingheight", "The starting height (block) of the peer"},
                             {RPCResult::Type::NUM, "synced_headers", "The last header we have in common with this peer"},
                             {RPCResult::Type::NUM, "synced_blocks", "The last block we have in common with this peer"},
                             {RPCResult::Type::ARR, "inflight", "",
@@ -141,6 +143,10 @@ static RPCHelpMan getpeerinfo()
                             }},
                             {RPCResult::Type::BOOL, "whitelisted", /* optional */ true, "Whether the peer is whitelisted with default permissions\n"
                                                                                         "(DEPRECATED, returned only if config option -deprecatedrpc=whitelisted is passed)"},
+                            {RPCResult::Type::ARR, "permissions", "Any special permissions that have been granted to this peer",
+                            {
+                                {RPCResult::Type::STR, "permission_type", Join(NET_PERMISSIONS_DOC, ",\n") + ".\n"},
+                            }},
                             {RPCResult::Type::NUM, "minfeefilter", "The minimum fee rate for transactions this peer accepts"},
                             {RPCResult::Type::OBJ_DYN, "bytessent_per_msg", "",
                             {
@@ -165,8 +171,9 @@ static RPCHelpMan getpeerinfo()
         [&](const RPCHelpMan& self, const JSONRPCRequest& request) -> UniValue
 {
     NodeContext& node = EnsureNodeContext(request.context);
-    if(!node.connman)
+    if(!node.connman || !node.peerman) {
         throw JSONRPCError(RPC_CLIENT_P2P_DISABLED, "Error: Peer-to-peer functionality missing or disabled");
+    }
 
     std::vector<CNodeStats> vstats;
     node.connman->GetNodeStats(vstats);
@@ -176,7 +183,7 @@ static RPCHelpMan getpeerinfo()
     for (const CNodeStats& stats : vstats) {
         UniValue obj(UniValue::VOBJ);
         CNodeStateStats statestats;
-        bool fStateStats = GetNodeStateStats(stats.nodeid, statestats);
+        bool fStateStats = node.peerman->GetNodeStateStats(stats.nodeid, statestats);
         obj.pushKV("id", stats.nodeid);
         obj.pushKV("addr", stats.addrName);
         if (stats.addrBind.IsValid()) {
@@ -215,16 +222,18 @@ static RPCHelpMan getpeerinfo()
         // their ver message.
         obj.pushKV("subver", stats.cleanSubVer);
         obj.pushKV("inbound", stats.fInbound);
+        obj.pushKV("bip152_hb_to", stats.m_bip152_highbandwidth_to);
+        obj.pushKV("bip152_hb_from", stats.m_bip152_highbandwidth_from);
         if (IsDeprecatedRPCEnabled("getpeerinfo_addnode")) {
             // addnode is deprecated in v0.21 for removal in v0.22
             obj.pushKV("addnode", stats.m_manual_connection);
         }
-        obj.pushKV("startingheight", stats.nStartingHeight);
         if (fStateStats) {
             if (IsDeprecatedRPCEnabled("banscore")) {
                 // banscore is deprecated in v0.21 for removal in v0.22
                 obj.pushKV("banscore", statestats.m_misbehavior_score);
             }
+            obj.pushKV("startingheight", statestats.m_starting_height);
             obj.pushKV("synced_headers", statestats.nSyncHeight);
             obj.pushKV("synced_blocks", statestats.nCommonHeight);
             UniValue heights(UniValue::VARR);
@@ -288,10 +297,10 @@ static RPCHelpMan addnode()
     std::string strCommand;
     if (!request.params[1].isNull())
         strCommand = request.params[1].get_str();
-    if (request.fHelp || request.params.size() != 2 ||
-        (strCommand != "onetry" && strCommand != "add" && strCommand != "remove"))
+    if (strCommand != "onetry" && strCommand != "add" && strCommand != "remove") {
         throw std::runtime_error(
             self.ToString());
+    }
 
     NodeContext& node = EnsureNodeContext(request.context);
     if(!node.connman)
@@ -482,12 +491,12 @@ static RPCHelpMan getnettotals()
     obj.pushKV("timemillis", GetTimeMillis());
 
     UniValue outboundLimit(UniValue::VOBJ);
-    outboundLimit.pushKV("timeframe", node.connman->GetMaxOutboundTimeframe());
+    outboundLimit.pushKV("timeframe", count_seconds(node.connman->GetMaxOutboundTimeframe()));
     outboundLimit.pushKV("target", node.connman->GetMaxOutboundTarget());
     outboundLimit.pushKV("target_reached", node.connman->OutboundTargetReached(false));
     outboundLimit.pushKV("serve_historical_blocks", !node.connman->OutboundTargetReached(true));
     outboundLimit.pushKV("bytes_left_in_cycle", node.connman->GetOutboundTargetBytesLeft());
-    outboundLimit.pushKV("time_left_in_cycle", node.connman->GetMaxOutboundTimeLeftInCycle());
+    outboundLimit.pushKV("time_left_in_cycle", count_seconds(node.connman->GetMaxOutboundTimeLeftInCycle()));
     obj.pushKV("uploadtarget", outboundLimit);
     return obj;
 },
@@ -497,11 +506,9 @@ static RPCHelpMan getnettotals()
 static UniValue GetNetworksInfo()
 {
     UniValue networks(UniValue::VARR);
-    for(int n=0; n<NET_MAX; ++n)
-    {
+    for (int n = 0; n < NET_MAX; ++n) {
         enum Network network = static_cast<enum Network>(n);
-        if(network == NET_UNROUTABLE || network == NET_INTERNAL)
-            continue;
+        if (network == NET_UNROUTABLE || network == NET_I2P || network == NET_CJDNS || network == NET_INTERNAL) continue;
         proxyType proxy;
         UniValue obj(UniValue::VOBJ);
         GetProxy(network, proxy);
@@ -579,7 +586,9 @@ static RPCHelpMan getnetworkinfo()
         obj.pushKV("localservices", strprintf("%016x", services));
         obj.pushKV("localservicesnames", GetServicesNames(services));
     }
-    obj.pushKV("localrelay", g_relay_txes);
+    if (node.peerman) {
+        obj.pushKV("localrelay", !node.peerman->IgnoresIncomingTxs());
+    }
     obj.pushKV("timeoffset",    GetTimeOffset());
     if (node.connman) {
         obj.pushKV("networkactive", node.connman->GetNetworkActive());
@@ -630,7 +639,7 @@ static RPCHelpMan setban()
     std::string strCommand;
     if (!request.params[1].isNull())
         strCommand = request.params[1].get_str();
-    if (request.fHelp || !help.IsValidNumArgs(request.params.size()) || (strCommand != "add" && strCommand != "remove")) {
+    if (strCommand != "add" && strCommand != "remove") {
         throw std::runtime_error(help.ToString());
     }
     NodeContext& node = EnsureNodeContext(request.context);

@@ -276,6 +276,33 @@ configure option adds `-DDEBUG_LOCKORDER` to the compiler flags. This inserts
 run-time checks to keep track of which locks are held and adds warnings to the
 `debug.log` file if inconsistencies are detected.
 
+### Assertions and Checks
+
+The util file `src/util/check.h` offers helpers to protect against coding and
+internal logic bugs. They must never be used to validate user, network or any
+other input.
+
+* `assert` or `Assert` should be used to document assumptions when any
+  violation would mean that it is not safe to continue program execution. The
+  code is always compiled with assertions enabled.
+   - For example, a nullptr dereference or any other logic bug in validation
+     code means the program code is faulty and must terminate immediately.
+* `CHECK_NONFATAL` should be used for recoverable internal logic bugs. On
+  failure, it will throw an exception, which can be caught to recover from the
+  error.
+   - For example, a nullptr dereference or any other logic bug in RPC code
+     means that the RPC code is faulty and can not be executed. However, the
+     logic bug can be shown to the user and the program can continue to run.
+* `Assume` should be used to document assumptions when program execution can
+  safely continue even if the assumption is violated. In debug builds it
+  behaves like `Assert`/`assert` to notify developers and testers about
+  nonfatal errors. In production it doesn't warn or log anything, though the
+  expression is always evaluated.
+   - For example it can be assumed that a variable is only initialized once,
+     but a failed assumption does not result in a fatal bug. A failed
+     assumption may or may not result in a slightly degraded user experience,
+     but it is safe to continue program execution.
+
 ### Valgrind suppressions file
 
 Valgrind is a programming tool for memory debugging, memory leak detection, and
@@ -516,7 +543,7 @@ General Bitcoin Core
   - *Rationale*: RPC allows for better automatic testing. The test suite for
     the GUI is very limited.
 
-- Make sure pull requests pass Travis CI before merging.
+- Make sure pull requests pass CI before merging.
 
   - *Rationale*: Makes sure that they pass thorough testing, and that the tester will keep passing
      on the master branch. Otherwise, all new pull requests will start failing the tests, resulting in
@@ -1009,7 +1036,7 @@ Scripted diffs
 --------------
 
 For reformatting and refactoring commits where the changes can be easily automated using a bash script, we use
-scripted-diff commits. The bash script is included in the commit message and our Travis CI job checks that
+scripted-diff commits. The bash script is included in the commit message and our CI job checks that
 the result of the script is identical to the commit. This aids reviewers since they can verify that the script
 does exactly what it is supposed to do. It is also helpful for rebasing (since the same script can just be re-run
 on the new master commit).

@@ -42,7 +42,6 @@ class CChainParams;
 class CInv;
 class CConnman;
 class CScriptCheck;
-class CBlockPolicyEstimator;
 class CTxMemPool;
 class ChainstateManager;
 class TxValidationState;
@@ -110,7 +109,6 @@ enum class SynchronizationState {
 };
 
 extern RecursiveMutex cs_main;
-extern CBlockPolicyEstimator feeEstimator;
 typedef std::unordered_map<uint256, CBlockIndex*, BlockHasher> BlockMap;
 extern Mutex g_best_block_mutex;
 extern std::condition_variable g_best_block_cv;
@@ -503,9 +501,9 @@ enum class CoinsCacheSizeState
  * whereas block information and metadata independent of the current tip is
  * kept in `BlockMetadataManager`.
  */
-class CChainState {
-private:
-
+class CChainState
+{
+protected:
     /**
      * Every received block is assigned a unique and increasing identifier, so we
      * know which one to give priority in case of a fork.
@@ -564,7 +562,7 @@ public:
 
     //! @returns whether or not the CoinsViews object has been fully initialized and we can
     //!          safely flush this object to disk.
-    bool CanFlushToDisk() EXCLUSIVE_LOCKS_REQUIRED(cs_main) {
+    bool CanFlushToDisk() const EXCLUSIVE_LOCKS_REQUIRED(cs_main) {
         return m_coins_views && m_coins_views->m_cacheview;
     }
 
