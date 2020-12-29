@@ -1290,7 +1290,7 @@ std::string CopyrightHolders(const std::string& strPrefix)
     }
     // Make sure X1 copyright is not removed by accident
     if (copyright_devs.find("X1 Purple Wallet") == std::string::npos) {
-        strCopyrightHolders += "\n" + strPrefix + "The X1 Developers";
+        strCopyrightHolders += "\n" + strPrefix + "The X1 developers";
     }
     return strCopyrightHolders;
 }
